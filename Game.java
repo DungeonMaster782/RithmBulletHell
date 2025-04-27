@@ -355,18 +355,30 @@ public class Game extends Canvas implements KeyListener, Runnable {
     @Override
     public void keyPressed(KeyEvent e) {
         switch (e.getKeyCode()) {
-            case KeyEvent.VK_A, KeyEvent.VK_LEFT -> left = true;
+            case KeyEvent.VK_A, KeyEvent.VK_LEFT  -> left  = true;
             case KeyEvent.VK_D, KeyEvent.VK_RIGHT -> right = true;
-            case KeyEvent.VK_W, KeyEvent.VK_UP -> up = true;
-            case KeyEvent.VK_S, KeyEvent.VK_DOWN -> down = true;
-            case KeyEvent.VK_P -> paused = !paused;
-            case KeyEvent.VK_ESCAPE -> {
-                Window w = SwingUtilities.getWindowAncestor(this);
-                if (w != null) w.dispose();
-                System.exit(0);
+            case KeyEvent.VK_W, KeyEvent.VK_UP    -> up    = true;
+            case KeyEvent.VK_S, KeyEvent.VK_DOWN  -> down  = true;
+
+            case KeyEvent.VK_P -> {
+                paused = !paused;
+                if (musicClip != null) {
+                    if (paused) {
+                        musicClip.stop();
+                    } else {
+                        musicClip.start();
+                    }
+                }
             }
+
+        case KeyEvent.VK_ESCAPE -> {
+            Window w = SwingUtilities.getWindowAncestor(this);
+            if (w != null) w.dispose();
+            System.exit(0);
         }
     }
+}
+
 
     @Override
     public void keyReleased(KeyEvent e) {
