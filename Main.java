@@ -8,8 +8,6 @@ public class Main {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            // Генерируем недостающие режимы
-            Converter.convertAll();
 
             // Создаём окно и канву
             JFrame frame = new JFrame("Beatmap Game Multi");
