@@ -37,6 +37,14 @@ public class MainMenu {
         playerItem.addActionListener(e -> changePlayerSpeed(parent));
         settings.add(playerItem);
 
+        JMenuItem fpsItem = new JMenuItem("FPS Limit");
+        fpsItem.addActionListener(e -> changeFPS(parent));
+        settings.add(fpsItem);
+
+        JMenuItem vsyncItem = new JMenuItem("VSync (on/off)");
+        vsyncItem.addActionListener(e -> changeVSync(parent));
+        settings.add(vsyncItem);
+
         menuBar.add(settings);
         return menuBar;
     }
@@ -187,6 +195,56 @@ public class MainMenu {
         }
     }
 
+    private static void changeFPS(JFrame parent) {
+        File cfg = new File("config.properties");
+        Properties p = new Properties();
+        if (cfg.exists()) {
+            try (FileInputStream in = new FileInputStream(cfg)) {
+                p.load(in);
+            } catch (IOException ignored) {}
+        }
+        String cur = p.getProperty("maxFPS", "60");
+        String s = JOptionPane.showInputDialog(parent,
+            "Max FPS (0 = unlimited):", cur);
+        if (s == null) return;
+        try {
+            int value = Integer.parseInt(s);
+            p.setProperty("maxFPS", Integer.toString(value));
+            try (FileOutputStream out = new FileOutputStream(cfg)) {
+                p.store(out, null);
+            }
+        } catch (NumberFormatException | IOException ex) {
+            JOptionPane.showMessageDialog(parent,
+                "Ошибка: " + ex.getMessage(),
+                "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private static void changeVSync(JFrame parent) {
+        File cfg = new File("config.properties");
+        Properties p = new Properties();
+        if (cfg.exists()) {
+            try (FileInputStream in = new FileInputStream(cfg)) {
+                p.load(in);
+            } catch (IOException ignored) {}
+        }
+        String cur = p.getProperty("vsync", "true");
+        String s = JOptionPane.showInputDialog(parent,
+            "Enable VSync? (true/false):", cur);
+        if (s == null) return;
+        try {
+            boolean value = Boolean.parseBoolean(s);
+            p.setProperty("vsync", Boolean.toString(value));
+            try (FileOutputStream out = new FileOutputStream(cfg)) {
+                p.store(out, null);
+            }
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(parent,
+                "Ошибка: " + ex.getMessage(),
+                "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     private static void unzipArchive(File src, File dest) throws IOException {
         if (!dest.exists()) dest.mkdirs();
         try (ZipInputStream zis = new ZipInputStream(new FileInputStream(src))) {
@@ -200,7 +258,9 @@ public class MainMenu {
                     try (BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(out))) {
                         byte[] buf = new byte[4096];
                         int len;
-                        while ((len = zis.read(buf)) > 0) bos.write(buf, 0, len);
+                        while ((len = zis.read(buf)) > 0) {
+                            bos.write(buf, 0, len);
+                        }
                     }
                 }
                 zis.closeEntry();

@@ -25,27 +25,28 @@ public class Config {
                 e.printStackTrace();
             }
         }
-        // основные настройки
-        changed |= addDefault("playerSpeed",   "5");
-        changed |= addDefault("bulletSpeed",   "4");
+        // дробные скорости
+        changed |= addDefault("playerSpeed",   "5.0");
+        changed |= addDefault("bulletSpeed",   "4.0");
+        changed |= addDefault("slowSpeed",     "2.0");
+        // размеры и хитбокс
         changed |= addDefault("screenWidth",   "800");
         changed |= addDefault("screenHeight",  "600");
         changed |= addDefault("hitboxRadius",  "10");
-        changed |= addDefault("slowSpeed",     "2");
         // управление по умолчанию WASD
         changed |= addDefault("keyLeft",       "A");
         changed |= addDefault("keyRight",      "D");
         changed |= addDefault("keyUp",         "W");
         changed |= addDefault("keyDown",       "S");
         changed |= addDefault("playerTexture", "");
-
         // звук
         changed |= addDefault("musicVolume",   "1.0");
         changed |= addDefault("sfxVolume",     "1.0");
-
-        // новый функционал
+        // ограничения FPS и VSync
         changed |= addDefault("maxFPS",        "60");    // 0 — без ограничения
         changed |= addDefault("vsync",         "true");  // вертикальная синхронизация
+        // затемнение фона (0.0–1.0)
+        changed |= addDefault("backgroundDim", "0.5");
 
         if (changed) {
             try (FileOutputStream out = new FileOutputStream(cfg)) {
@@ -75,16 +76,35 @@ public class Config {
         }
     }
 
-    // Геттеры для старых настроек
-    public static int getPlayerSpeed()    { return Integer.parseInt(props.getProperty("playerSpeed")); }
-    public static double getBulletSpeed() { return Double.parseDouble(props.getProperty("bulletSpeed")); }
-    public static int getSlowSpeed()      { return Integer.parseInt(props.getProperty("slowSpeed")); }
+    // дробные скорости
+    public static double getPlayerSpeed() {
+        try {
+            return Double.parseDouble(props.getProperty("playerSpeed", "5.0"));
+        } catch (NumberFormatException e) {
+            return 5.0;
+        }
+    }
+    public static double getBulletSpeed() {
+        try {
+            return Double.parseDouble(props.getProperty("bulletSpeed", "4.0"));
+        } catch (NumberFormatException e) {
+            return 4.0;
+        }
+    }
+    public static double getSlowSpeed() {
+        try {
+            return Double.parseDouble(props.getProperty("slowSpeed", "2.0"));
+        } catch (NumberFormatException e) {
+            return 2.0;
+        }
+    }
+
     public static int getScreenWidth()    { return Integer.parseInt(props.getProperty("screenWidth")); }
     public static int getScreenHeight()   { return Integer.parseInt(props.getProperty("screenHeight")); }
     public static int getHitboxRadius()   { return Integer.parseInt(props.getProperty("hitboxRadius")); }
 
     public static int getKeyCode(String keyProp) {
-        String k = props.getProperty(keyProp,"").trim().toUpperCase();
+        String k = props.getProperty(keyProp, "").trim().toUpperCase();
         switch (k) {
             case "LEFT":  return KeyEvent.VK_LEFT;
             case "RIGHT": return KeyEvent.VK_RIGHT;
@@ -92,10 +112,9 @@ public class Config {
             case "DOWN":  return KeyEvent.VK_DOWN;
             case "SHIFT": return KeyEvent.VK_SHIFT;
             default:
-                if (k.length()==1) return KeyEvent.getExtendedKeyCodeForChar(k.charAt(0));
+                if (k.length() == 1) return KeyEvent.getExtendedKeyCodeForChar(k.charAt(0));
                 try { return Integer.parseInt(k); }
-                catch(Exception e){}
-                return KeyEvent.getExtendedKeyCodeForChar(k.charAt(0));
+                catch (Exception e) { return KeyEvent.getExtendedKeyCodeForChar(k.charAt(0)); }
         }
     }
 
@@ -119,8 +138,6 @@ public class Config {
         }
     }
 
-    // Новые методы для Game.java
-    /** Максимальный FPS (0 — без ограничения) */
     public static int getMaxFPS() {
         try {
             return Integer.parseInt(props.getProperty("maxFPS", "0"));
@@ -129,8 +146,18 @@ public class Config {
         }
     }
 
-    /** Включена ли вертикальная синхронизация */
     public static boolean isVSyncEnabled() {
         return Boolean.parseBoolean(props.getProperty("vsync", "true"));
+    }
+
+    /**
+     * @return степень затемнения фона (0.0 = нет затемнения, 1.0 = полностью чёрный)
+     */
+    public static float getBackgroundDim() {
+        try {
+            return Float.parseFloat(props.getProperty("backgroundDim", "0.5"));
+        } catch (NumberFormatException e) {
+            return 0.5f;
+        }
     }
 }
