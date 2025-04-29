@@ -1,4 +1,3 @@
-// Game.java
 import java.awt.Canvas;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -7,82 +6,104 @@ import java.awt.Graphics2D;
 import java.awt.Composite;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
-import java.awt.Window;
-import java.awt.Point;
+import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.geom.Path2D;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
-import java.awt.image.BufferedImage;
+import java.awt.image.BufferStrategy;
+import java.awt.Point;
+import java.awt.Window;
 import java.io.*;
 import java.util.*;
-import javax.imageio.ImageIO;
 import javax.sound.sampled.*;
-import javax.swing.*;
+import javax.sound.sampled.FloatControl;
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 
 public class Game extends Canvas implements KeyListener, Runnable {
-    private static final int WIDTH  = Config.getScreenWidth();
-    private static final int HEIGHT = Config.getScreenHeight();
-    private static final long INV_DURATION = 3000;
+    static {
+        System.setProperty("sun.java2d.opengl", "true");
+        System.setProperty("sun.java2d.d3d",    "true");
+    }
 
-    // Игрок
+    private static final int WIDTH           = Config.getScreenWidth();
+    private static final int HEIGHT          = Config.getScreenHeight();
+    private static final long INV_DURATION   = 3000;
+    private static final int  BLINK_INTERVAL = 200;
+
     private final int playerSize = 40;
     private final int bulletSize = 12;
     private final int maxLives   = 5;
 
-    // Конфигурация
-    private final int    playerSpeed  = Config.getPlayerSpeed();
-    private final double bulletSpeed  = Config.getBulletSpeed();
-    private final int    slowSpeed    = Config.getSlowSpeed();
-    private final int    hitboxRadius = Config.getHitboxRadius();
-    private final int    keyLeft    = Config.getKeyCode("keyLeft");
-    private final int    keyRight   = Config.getKeyCode("keyRight");
-    private final int    keyUp      = Config.getKeyCode("keyUp");
-    private final int    keyDown    = Config.getKeyCode("keyDown");
-    private final BufferedImage playerTexture = Config.getPlayerTexture();
+    private final int    playerSpeed = Config.getPlayerSpeed();
+    private final double bulletSpeed = Config.getBulletSpeed();
+    private final int    slowSpeed   = Config.getSlowSpeed();
+    private final int    hitboxRadius= Config.getHitboxRadius();
+    private final int    keyLeft     = Config.getKeyCode("keyLeft");
+    private final int    keyRight    = Config.getKeyCode("keyRight");
+    private final int    keyUp       = Config.getKeyCode("keyUp");
+    private final int    keyDown     = Config.getKeyCode("keyDown");
+    private final java.awt.image.BufferedImage playerTexture = Config.getPlayerTexture();
 
-    // Тайминги и параметры слайдера
-    private double approachTime;      // из AR → ms
-    private double sliderMultiplier;  // из Difficulty
-    private double beatLength;        // из TimingPoints → ms на бит
+    private double approachTime, sliderMultiplier, beatLength;
 
-    // Остальное состояние
-    private long startTime;
-    private Clip musicClip;
+    private long   startTime;
+    private Clip   musicClip;
     private boolean running, paused;
     private boolean left, right, up, down, slow;
-    private int playerX, playerY;
-    private int lives;
+    private int     playerX, playerY, lives;
     private boolean invulnerable;
-    private long lastDamageTime;
-    private String mapTitle = "No map selected";
-    private String currentSetName, currentOsuFile;
+    private long    lastDamageTime;
+    private String  mapTitle = "No map selected";
+    private String  currentSetName, currentOsuFile;
 
-    // Hit circles
-    private final List<HitObject> hitObjects = new ArrayList<>();
+    private final List<HitObject> hitObjects        = new ArrayList<>();
     private int spawnIndex = 0;
 
-    // Слайдерные лазеры
-    private final List<SliderLaser> sliderLasers = new ArrayList<>();
-
-    // Запланированные пули из слайдера
-    private class ScheduledSpawn { long offset; int x,y; }
+    private final List<SliderLaser> sliderLasers      = new ArrayList<>();
     private final List<ScheduledSpawn> scheduledSpawns = new ArrayList<>();
     private int scheduleIndex = 0;
 
-    // Обычные пули
-    private final List<Bullet> bullets = new ArrayList<>();
+    private final List<Bullet> bullets     = new ArrayList<>();
+    private final Deque<Bullet> bulletPool = new ArrayDeque<>();
+
+    private final Font        hudFont          = new Font("Arial", Font.BOLD, 14);
+    private final BasicStroke hitboxStroke     = new BasicStroke(2f);
+    private final Composite   defaultComposite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER,1f);
+    private final Composite   hitboxComposite  = AlphaComposite.getInstance(AlphaComposite.SRC_OVER,0.5f);
+
+    private boolean aaDisabled = false;
 
     public Game() {
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
+        setBackground(Color.BLACK);
         addKeyListener(this);
         setFocusable(true);
         requestFocus();
         resetPlayer();
     }
 
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        SwingUtilities.invokeLater(() -> {
+            Window w = SwingUtilities.getWindowAncestor(this);
+            if (w instanceof JFrame) {
+                JFrame f = (JFrame)w;
+                f.setResizable(false);
+                f.getContentPane().setBackground(Color.BLACK);
+            }
+        });
+    }
+
     private void resetPlayer() {
         playerX = WIDTH/2 - playerSize/2;
         playerY = HEIGHT - 60;
-        lives   = maxLives;
+        lives         = maxLives;
+        invulnerable  = false;
+        lastDamageTime= 0;
     }
 
     public void setMap(String setName, String osuFile) {
@@ -90,15 +111,12 @@ public class Game extends Canvas implements KeyListener, Runnable {
         currentSetName = setName;
         currentOsuFile = osuFile;
         mapTitle       = setName + " | " + osuFile;
-        invulnerable   = false;
-        lastDamageTime = 0;
-        spawnIndex     = 0;
-        scheduleIndex  = 0;
-
         hitObjects.clear();
         bullets.clear();
         sliderLasers.clear();
         scheduledSpawns.clear();
+        bulletPool.clear();
+        spawnIndex = scheduleIndex = 0;
         resetPlayer();
 
         parseOsu(new File(Main.BEATMAPS_DIR, setName), osuFile);
@@ -127,86 +145,68 @@ public class Game extends Canvas implements KeyListener, Runnable {
     }
 
     private void parseOsu(File dir, String fileName) {
-        // Дефолты
-        approachTime      = 1500;
-        sliderMultiplier  = 1.4;
-        beatLength        = 500;
+        approachTime     = 1500;
+        sliderMultiplier = 1.4;
+        beatLength       = 500;
 
-        // Временные хранилища
         class TempSlider {
-            long time;
-            int repeats;
-            double pixelLen;
-            List<Point> ctrlPts;
+            long time; int repeats; double pixelLen; List<Point> ctrlPts;
         }
         List<TempSlider> tempSliders = new ArrayList<>();
 
-        boolean inDiff = false, inTiming = false, inHits = false;
+        boolean inDiff=false, inTiming=false, inHits=false;
         File osu = new File(dir, fileName);
-
         try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(osu), "UTF-8"))) {
             String line;
             while ((line = r.readLine()) != null) {
-                // --- Difficulty ---
                 if (!inHits && !inTiming) {
-                    if (line.equals("[Difficulty]")) { inDiff = true; continue; }
-                    if (line.equals("[TimingPoints]")) { inTiming = true; inDiff = false; }
+                    if (line.equals("[Difficulty]"))    { inDiff=true; continue; }
+                    if (line.equals("[TimingPoints]"))  { inTiming=true; inDiff=false; continue; }
                 }
                 if (inDiff) {
                     if (line.startsWith("ApproachRate:"))
-                        approachTime     = (line.contains(":")?
-                            1800 - 120 * Double.parseDouble(line.split(":",2)[1].trim())
-                            : approachTime);
+                        approachTime = 1800 - 120 * Double.parseDouble(line.split(":",2)[1].trim());
                     if (line.startsWith("SliderMultiplier:"))
                         sliderMultiplier = Double.parseDouble(line.split(":",2)[1].trim());
-                    if (line.startsWith("[")) inDiff = false;
+                    if (line.startsWith("[")) inDiff=false;
                     continue;
                 }
-                // --- TimingPoints (берём первую «основную») ---
                 if (inTiming) {
-                    if (line.startsWith("[")) { inTiming = false; continue; }
+                    if (line.startsWith("[")) { inTiming=false; continue; }
                     if (!line.isBlank()) {
                         String[] tp = line.split(",");
-                        if (tp.length > 6 && Integer.parseInt(tp[6].trim()) == 1) {
+                        if (tp.length>6 && Integer.parseInt(tp[6].trim())==1) {
                             beatLength = Double.parseDouble(tp[1].trim());
-                            inTiming = false;
+                            inTiming=false;
                         }
                     }
                     continue;
                 }
-                // --- HitObjects ---
-                if (!inHits && line.equals("[HitObjects]")) { inHits = true; continue; }
+                if (!inHits && line.equals("[HitObjects]")) { inHits=true; continue; }
                 if (inHits && line.isBlank()) continue;
                 if (inHits) {
                     String[] p = line.split(",");
-                    int x    = Integer.parseInt(p[0]), y    = Integer.parseInt(p[1]);
-                    long t   = Long.parseLong(p[2]);
+                    int x = Integer.parseInt(p[0]), y = Integer.parseInt(p[1]);
+                    long t = Long.parseLong(p[2]);
                     int type = Integer.parseInt(p[3]);
-
-                    // Слайдер
-                    if ((type & 2) != 0 && p.length > 7) {
+                    if ((type & 2)!=0 && p.length>7) {
                         TempSlider ts = new TempSlider();
                         ts.time     = t;
                         ts.repeats  = Integer.parseInt(p[6]);
                         ts.pixelLen = Double.parseDouble(p[7]);
-
-                        // Контрольные точки (включая стартовую)
                         String[] sd = p[5].split("\\|");
-                        ts.ctrlPts = new ArrayList<>();
-                        ts.ctrlPts.add(new Point(x, y));         // старт
-                        for (int i = 1; i < sd.length; i++) {
-                            String[] xy = sd[i].split(":");
+                        ts.ctrlPts  = new ArrayList<>();
+                        ts.ctrlPts.add(new Point(x,y));
+                        for (int i=1;i<sd.length;i++){
+                            String[] xy=sd[i].split(":");
                             ts.ctrlPts.add(new Point(
                                 Integer.parseInt(xy[0]),
                                 Integer.parseInt(xy[1])
                             ));
                         }
-
                         tempSliders.add(ts);
-                    }
-                    // Круги
-                    else if ((type & 1) != 0) {
-                        hitObjects.add(new HitObject(x, y, t));
+                    } else if ((type & 1)!=0) {
+                        hitObjects.add(new HitObject(x,y,t));
                     }
                 }
             }
@@ -214,288 +214,319 @@ public class Game extends Canvas implements KeyListener, Runnable {
             ex.printStackTrace();
         }
 
-        // По каждому временному слайдеру строим Laser + события пуль
-        double sliderVelocity = sliderMultiplier * 100; // px/beat
-        for (TempSlider ts : tempSliders) {
-            // длительность одного прохода
-            double singleDur = ts.pixelLen / sliderVelocity * beatLength;
-            double totalDur  = singleDur * ts.repeats;
-
-            // 1) Scheduler: по мере движения по CtrlPts (только вперёд) спавним пули
+        double sliderVelocity = sliderMultiplier * 100;
+        for (TempSlider ts: tempSliders) {
+            double singleDur = ts.pixelLen/sliderVelocity*beatLength;
+            double totalDur  = singleDur*ts.repeats;
             int nPts = ts.ctrlPts.size();
-            for (int k = 1; k < nPts; k++) {
-                long offset = (long)( (k / (double)(nPts - 1)) * singleDur );
+            for (int k=1;k<nPts;k++){
+                double frac = k/(double)(nPts-1);
+                long ctrlTime = (long)(ts.time + frac*singleDur);
+                long offset   = ctrlTime - (long)approachTime;
                 ScheduledSpawn ss = new ScheduledSpawn();
                 ss.offset = offset;
                 ss.x      = ts.ctrlPts.get(k).x;
                 ss.y      = ts.ctrlPts.get(k).y;
                 scheduledSpawns.add(ss);
             }
-
-            // 2) создаём сам лазер
             sliderLasers.add(new SliderLaser(
-                ts.ctrlPts,
-                ts.time,
-                approachTime,
-                totalDur
+                ts.ctrlPts, ts.time, (long)approachTime, totalDur
             ));
         }
-        // Сортируем по времени
         scheduledSpawns.sort(Comparator.comparingLong(s->s.offset));
 
-        // --- загрузка музыки (как было) ---
-        // --- загрузка аудио с фолбэком для OGG ---
-       // … внутри parseOsu, после разбора слайдеров и перед закрывающей скобкой метода …
-    try {
-        String audioName = getAudioFilename(osu);
-        if (audioName != null) {
-            File audioFile = new File(dir, audioName);
-            try (AudioInputStream ais = AudioSystem.getAudioInputStream(audioFile)) {
-                // эти две строки теперь могут бросать LineUnavailableException
-                musicClip = AudioSystem.getClip();
-                musicClip.open(ais);
-            }
-        }
-    }
-    catch (UnsupportedAudioFileException uafe) {
-        System.err.println("Unsupported format, trying ffmpeg fallback: " + uafe.getMessage());
-        // … ваш ffmpeg-фолбэк, как раньше …
+        // === AUDIO LOADING WITH OGG SUPPORT & VOLUME CONTROL ===
         try {
-            File audioFile = new File(dir, getAudioFilename(osu));
+    String audioName;
+    try {
+        audioName = getAudioFilename(osu);
+    } catch (IOException e) {
+        e.printStackTrace();
+        audioName = null;
+    }
+    if (audioName != null) {
+        File audioFile = new File(dir, audioName);
+        AudioInputStream ais = null;
+        try {
+            // native attempt (OGG/MP3)
+            ais = AudioSystem.getAudioInputStream(audioFile);
+        } catch (UnsupportedAudioFileException | IOException e1) {
+            // fallback: ffmpeg → WAV
             File wav = new File(dir, "__temp.wav");
-            new ProcessBuilder(
-                "ffmpeg", "-y",
-                "-i", audioFile.getAbsolutePath(),
-                wav.getAbsolutePath()
-            ).inheritIO().start().waitFor();
-            try (AudioInputStream ais2 = AudioSystem.getAudioInputStream(wav)) {
+            try {
+                new ProcessBuilder("ffmpeg", "-y",
+                        "-i", audioFile.getAbsolutePath(),
+                        wav.getAbsolutePath())
+                    .inheritIO()
+                    .start()
+                    .waitFor();  // InterruptedException caught below
+                ais = AudioSystem.getAudioInputStream(wav);
+                wav.deleteOnExit();
+            } catch (IOException | InterruptedException | UnsupportedAudioFileException e2) {
+                e2.printStackTrace();
+                ais = null;
+            }
+        }
+        if (ais != null) {
+            try {
                 musicClip = AudioSystem.getClip();
-                musicClip.open(ais2);
-            }
-            wav.deleteOnExit();
-        } catch (Exception ex) {
-            System.err.println("ffmpeg fallback failed: " + ex.getMessage());
-        }
-    }
-    catch (LineUnavailableException lue) {
-        System.err.println("Audio line unavailable: " + lue.getMessage());
-    }
-    catch (IOException ioe) {
-        System.err.println("I/O error loading audio: " + ioe.getMessage());
-    }
-}  // конец parseOsu()
-
-private String getAudioFilename(File osu) throws IOException {
-    try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(osu), "UTF-8"))) {
-        String line;
-        while ((line = r.readLine()) != null) {
-            if (line.startsWith("AudioFilename:")) {
-                return line.split(":", 2)[1].trim();
+                musicClip.open(ais);  // теперь IOException и LineUnavailableException в catch-е
+                // регулировка громкости
+                if (musicClip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+                    FloatControl gain = (FloatControl) musicClip.getControl(FloatControl.Type.MASTER_GAIN);
+                    float vol = Config.getMusicVolume();
+                    float dB = 20f * (float)Math.log10(Math.max(vol, 0.0001f));
+                    gain.setValue(dB);
+                }
+            } catch (LineUnavailableException | IOException e3) {
+                e3.printStackTrace();
             }
         }
     }
-    return null;
+} catch (Exception e) {
+    // На всякий случай ловим всё остальное
+    e.printStackTrace();
 }
+    }
 
+    private String getAudioFilename(File osu) throws IOException {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(osu), "UTF-8"))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (line.startsWith("AudioFilename:")) {
+                    return line.split(":",2)[1].trim();
+                }
+            }
+        }
+        return null;
+    }
 
     @Override public void run() {
         createBufferStrategy(2);
+        BufferStrategy bs = getBufferStrategy();
         long lastTime = System.nanoTime();
-        long nsPerFrame = 1_000_000_000L / 60;
+        int fpsLimit = Config.getMaxFPS();
+        long nsPerFrame = fpsLimit>0 ? 1_000_000_000L/fpsLimit : 0;
 
         while (running) {
             long now = System.nanoTime();
-            if (now - lastTime >= nsPerFrame) {
-                update();
-                renderFrame();
+            boolean doFrame = fpsLimit<=0 || now-lastTime>=nsPerFrame;
+            if (doFrame) {
                 lastTime = now;
+                update();
+                renderFrame(bs);
+                if (Config.isVSyncEnabled()) Toolkit.getDefaultToolkit().sync();
             } else {
-                Thread.yield();
+                long sleepNs = nsPerFrame - (now-lastTime);
+                if (sleepNs>0) {
+                    try { Thread.sleep(sleepNs/1_000_000,(int)(sleepNs%1_000_000)); }
+                    catch(InterruptedException ignored){}
+                } else Thread.yield();
             }
         }
     }
 
     private void update() {
         if (paused) return;
-        long elapsed = (musicClip!=null
+        long elapsed = (musicClip != null)
             ? musicClip.getMicrosecondPosition()/1000
-            : System.currentTimeMillis() - startTime);
+            : System.currentTimeMillis()-startTime;
 
-        // Снимаем неуязвимость
-        if (invulnerable && elapsed - lastDamageTime >= INV_DURATION)
-            invulnerable = false;
+        if (invulnerable && elapsed-lastDamageTime>=INV_DURATION)
+            invulnerable=false;
 
-        // Спавн пуль из hit circles
-        while (spawnIndex < hitObjects.size()
-            && hitObjects.get(spawnIndex).time - approachTime <= elapsed) {
+        while (spawnIndex<hitObjects.size()
+            && hitObjects.get(spawnIndex).time-(long)approachTime<=elapsed) {
             spawnBullet(hitObjects.get(spawnIndex++));
         }
-
-        // Спавн пуль из слайдерных точек
-        while (scheduleIndex < scheduledSpawns.size()
-            && elapsed >= scheduledSpawns.get(scheduleIndex).offset) {
-            ScheduledSpawn ss = scheduledSpawns.get(scheduleIndex++);
+        while (scheduleIndex<scheduledSpawns.size()
+            && elapsed>=scheduledSpawns.get(scheduleIndex).offset) {
+            ScheduledSpawn ss=scheduledSpawns.get(scheduleIndex++);
             spawnSliderBullet(ss.x, ss.y);
         }
 
-        // Обновляем все пули
-        Iterator<Bullet> it = bullets.iterator();
-        while (it.hasNext()) {
-            Bullet b = it.next();
-            if (b.updateAndCheck(WIDTH, HEIGHT)) {
-                it.remove();
+        for (int i=bullets.size()-1;i>=0;i--){
+            Bullet b=bullets.get(i);
+            if (b.updateAndCheck(WIDTH,HEIGHT)){
+                removeBullet(i);
                 continue;
             }
-            // Проверка на игрока
-            if (!invulnerable) {
-                double cx = playerX + playerSize/2.0;
-                double cy = playerY + playerSize/2.0;
-                double dx = b.x - cx, dy = b.y - cy;
-                double rsum = b.size/2.0 + hitboxRadius;
-                if (dx*dx + dy*dy <= rsum*rsum) {
-                    it.remove();
-                    lives--;
-                    invulnerable   = true;
-                    lastDamageTime = elapsed;
-                    if (lives <= 0) { gameOver(); return; }
+            if (!invulnerable){
+                double cx=playerX+playerSize/2.0, cy=playerY+playerSize/2.0;
+                double dx=b.x-cx, dy=b.y-cy, rsum=b.size/2.0+hitboxRadius;
+                if (dx*dx+dy*dy<=rsum*rsum){
+                    removeBullet(i);
+                    lives--; invulnerable=true; lastDamageTime=elapsed;
+                    System.out.printf("Hit by bullet at (%.1f,%.1f); lives=%d%n",b.x,b.y,lives);
+                    if (lives<=0){ gameOver(); return; }
                 }
             }
         }
 
-        // Движение игрока
-        int spd = slow ? slowSpeed : playerSpeed;
-        if (left)  playerX = Math.max(0, playerX - spd);
-        if (right) playerX = Math.min(WIDTH - playerSize, playerX + spd);
-        if (up)    playerY = Math.max(0, playerY - spd);
-        if (down)  playerY = Math.min(HEIGHT - playerSize, playerY + spd);
+        double cx=playerX+playerSize/2.0, cy=playerY+playerSize/2.0;
+        for (SliderLaser sl: sliderLasers) {
+            if (elapsed < sl.getFullOpacityTime()) continue;
+            Path2D coll = sl.getCollisionPath(WIDTH,HEIGHT,elapsed);
+            if (coll!=null && coll.intersects(cx-hitboxRadius,cy-hitboxRadius,hitboxRadius*2,hitboxRadius*2)){
+                if (!invulnerable){
+                    lives--; invulnerable=true; lastDamageTime=elapsed;
+                    System.out.printf("Hit by slider at %d ms; lives=%d%n", elapsed, lives);
+                    if (lives<=0){ gameOver(); return; }
+                }
+            }
+        }
+
+        int spd = slow? slowSpeed: playerSpeed;
+        if (left)  playerX=Math.max(0,playerX-spd);
+        if (right) playerX=Math.min(WIDTH-playerSize,playerX+spd);
+        if (up)    playerY=Math.max(0,playerY-spd);
+        if (down)  playerY=Math.min(HEIGHT-playerSize,playerY+spd);
     }
 
-    private void renderFrame() {
-        Graphics2D g = (Graphics2D) getBufferStrategy().getDrawGraphics();
-        // Фон
+    private void renderFrame(BufferStrategy bs) {
+        Graphics2D g = (Graphics2D) bs.getDrawGraphics();
+        if (!aaDisabled){
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_OFF);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+            aaDisabled=true;
+        }
+        long elapsed = (musicClip!=null)
+            ? musicClip.getMicrosecondPosition()/1000
+            : System.currentTimeMillis()-startTime;
+
         g.setColor(Color.BLACK);
         g.fillRect(0,0,WIDTH,HEIGHT);
-        // HUD
+
         g.setColor(Color.WHITE);
-        g.setFont(new Font("Arial",Font.BOLD,14));
-        g.drawString(mapTitle, 20,20);
-        g.drawString("Lives: "+lives, WIDTH-100,20);
-        // Игрок
-        if (playerTexture != null)
-            g.drawImage(playerTexture, playerX, playerY, playerSize,playerSize,null);
-        else {
-            g.setColor(Color.WHITE);
-            g.fillRect(playerX, playerY, playerSize,playerSize);
+        g.setFont(hudFont);
+        g.drawString(mapTitle,20,20);
+        g.drawString("Lives: "+lives,WIDTH-100,20);
+
+        boolean draw = true;
+        if (invulnerable && elapsed-lastDamageTime<INV_DURATION){
+            if (((elapsed-lastDamageTime)/BLINK_INTERVAL)%2==0) draw=false;
         }
-        // Хитбокс
-        Composite orig = g.getComposite();
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
-        g.setStroke(new BasicStroke(2));
-        g.setColor(Color.WHITE);
-        int cx = playerX + playerSize/2, cy = playerY + playerSize/2;
-        g.drawOval(cx-hitboxRadius, cy-hitboxRadius, hitboxRadius*2, hitboxRadius*2);
-        g.setComposite(orig);
+        if (draw){
+            if (playerTexture!=null) g.drawImage(playerTexture,playerX,playerY,playerSize,playerSize,null);
+            else g.fillRect(playerX,playerY,playerSize,playerSize);
+        }
 
-        // Пули
+        int cxI=playerX+playerSize/2, cyI=playerY+playerSize/2;
+        g.setComposite(hitboxComposite);
+        g.setStroke(hitboxStroke);
+        g.drawOval(cxI-hitboxRadius,cyI-hitboxRadius,hitboxRadius*2,hitboxRadius*2);
+        g.setComposite(defaultComposite);
+
         g.setColor(Color.RED);
-        for (Bullet b : bullets)
-            g.fillOval((int)b.x - bulletSize/2, (int)b.y - bulletSize/2, bulletSize, bulletSize);
+        for (Bullet b: bullets){
+            g.fillOval((int)(b.x-b.size/2),(int)(b.y-b.size/2),b.size,b.size);
+        }
 
-        // Лазеры
-        long elapsed = (musicClip!=null
-            ? musicClip.getMicrosecondPosition()/1000
-            : System.currentTimeMillis() - startTime);
-        for (SliderLaser sl : sliderLasers)
-            sl.render(g, WIDTH, HEIGHT, elapsed);
+        for (SliderLaser sl: sliderLasers){
+            sl.render(g,WIDTH,HEIGHT,elapsed);
+        }
 
-        // Пауза
-        if (paused) {
+        if (paused){
             g.setColor(Color.YELLOW);
             g.setFont(new Font("Arial",Font.BOLD,48));
-            g.drawString("PAUSED", WIDTH/2-100, HEIGHT/2);
+            g.drawString("PAUSED",WIDTH/2-100,HEIGHT/2);
         }
 
         g.dispose();
-        getBufferStrategy().show();
+        bs.show();
     }
 
-    private void spawnBullet(HitObject ho) {
-        double cx = playerX + playerSize/2.0;
-        double cy = playerY + playerSize/2.0;
-        double x = Math.random()*WIDTH, y = -bulletSize;
-        double dx = (cx - x)/approachTime * bulletSpeed;
-        double dy = (cy - y)/approachTime * bulletSpeed;
-        bullets.add(new Bullet(x,y,dx,dy,bulletSize));
+    private void spawnBullet(HitObject ho){
+        Bullet b = bulletPool.pollFirst();
+        if (b==null) b=new Bullet(bulletSize);
+        b.init(ho,playerX+playerSize/2.0,playerY+playerSize/2.0,bulletSpeed,approachTime);
+        bullets.add(b);
     }
 
-    private void spawnSliderBullet(int sx, int sy) {
-        double cx = playerX + playerSize/2.0;
-        double cy = playerY + playerSize/2.0;
-        double dx = (cx - sx)/approachTime * bulletSpeed;
-        double dy = (cy - sy)/approachTime * bulletSpeed;
-        bullets.add(new Bullet(sx,sy,dx,dy,bulletSize));
+    private void spawnSliderBullet(int sx,int sy){
+        Bullet b = bulletPool.pollFirst();
+        if (b==null) b=new Bullet(bulletSize);
+        b.init(sx,sy,playerX+playerSize/2.0,playerY+playerSize/2.0,bulletSpeed,approachTime);
+        bullets.add(b);
     }
 
-    private void gameOver() {
-        running = false;
+    private void removeBullet(int idx){
+        bulletPool.addLast(bullets.remove(idx));
+    }
+
+    private void gameOver(){
+        running=false;
         SwingUtilities.invokeLater(() -> {
             int res = JOptionPane.showOptionDialog(
-                this, "You lost!", "Game Over",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.INFORMATION_MESSAGE,
-                null,
-                new String[]{"Retry","Exit"},
-                "Retry"
-            );
-            if (res == JOptionPane.YES_OPTION)
-                setMap(currentSetName, currentOsuFile);
-            else {
-                Window w = SwingUtilities.getWindowAncestor(this);
+                this,"You lost!","Game Over",
+                JOptionPane.YES_NO_OPTION,JOptionPane.INFORMATION_MESSAGE,
+                null,new String[]{"Retry","Exit"},"Retry");
+            if (res==JOptionPane.YES_OPTION){
+                setMap(currentSetName,currentOsuFile);
+            } else {
+                Window w=SwingUtilities.getWindowAncestor(this);
                 if (w!=null) w.dispose();
                 System.exit(0);
             }
         });
     }
 
-    @Override public void keyPressed(KeyEvent e) {
-        int kc = e.getKeyCode();
-        if (kc==keyLeft)   left  = true;
-        if (kc==keyRight)  right = true;
-        if (kc==keyUp)     up    = true;
-        if (kc==keyDown)   down  = true;
-        if (kc==KeyEvent.VK_SHIFT) slow = true;
-        if (kc==KeyEvent.VK_P && musicClip!=null) {
-            paused = !paused;
-            if (paused) musicClip.stop(); else musicClip.start();
-        }
-        if (kc==KeyEvent.VK_ESCAPE) {
-            Window w = SwingUtilities.getWindowAncestor(this);
-            if (w!=null) w.dispose();
-            System.exit(0);
+    @Override public void keyPressed(KeyEvent e){
+        switch(e.getKeyCode()){
+            case KeyEvent.VK_LEFT:   left=true; break;
+            case KeyEvent.VK_RIGHT:  right=true;break;
+            case KeyEvent.VK_UP:     up=true;   break;
+            case KeyEvent.VK_DOWN:   down=true; break;
+            case KeyEvent.VK_SHIFT:  slow=true; break;
+            case KeyEvent.VK_P:
+                if (musicClip!=null){
+                    paused=!paused;
+                    if (paused) musicClip.stop(); else musicClip.start();
+                }
+                break;
+            case KeyEvent.VK_ESCAPE:
+                Window w=SwingUtilities.getWindowAncestor(this);
+                if (w!=null) w.dispose();
+                System.exit(0);
         }
     }
-    @Override public void keyReleased(KeyEvent e) {
-        int kc = e.getKeyCode();
-        if (kc==keyLeft)   left  = false;
-        if (kc==keyRight)  right = false;
-        if (kc==keyUp)     up    = false;
-        if (kc==keyDown)   down  = false;
-        if (kc==KeyEvent.VK_SHIFT) slow = false;
+    @Override public void keyReleased(KeyEvent e){
+        switch(e.getKeyCode()){
+            case KeyEvent.VK_LEFT:   left=false; break;
+            case KeyEvent.VK_RIGHT:  right=false;break;
+            case KeyEvent.VK_UP:     up=false;   break;
+            case KeyEvent.VK_DOWN:   down=false; break;
+            case KeyEvent.VK_SHIFT:  slow=false; break;
+        }
     }
-    @Override public void keyTyped(KeyEvent e) {}
+    @Override public void keyTyped(KeyEvent e){}
 
     private static class HitObject {
         final int x,y; final long time;
-        HitObject(int x,int y,long t){ this.x=x; this.y=y; this.time=t;}
+        HitObject(int x,int y,long t){this.x=x;this.y=y;this.time=t;}
     }
+
+    private static class ScheduledSpawn {
+        long offset; int x,y;
+    }
+
     private static class Bullet {
-        double x,y,dx,dy; int size;
-        Bullet(double x,double y,double dx,double dy,int sz){
-            this.x=x;this.y=y;this.dx=dx;this.dy=dy;this.size=sz;
+        double x,y,dx,dy; final int size;
+        Bullet(int size){this.size=size;}
+        void init(HitObject ho,double px,double py,double speed,double approach){
+            this.x=Math.random()*WIDTH;
+            this.y=-this.size;
+            this.dx=(px-x)/approach*speed;
+            this.dy=(py-y)/approach*speed;
+        }
+        void init(int sx,int sy,double px,double py,double speed,double approach){
+            this.x=sx; this.y=sy;
+            this.dx=(px-x)/approach*speed;
+            this.dy=(py-y)/approach*speed;
         }
         boolean updateAndCheck(int w,int h){
             x+=dx; y+=dy;
-            return y>h+size || x<-size || x>w+size;
+            return y>h+size||x<-size||x>w+size;
         }
     }
 }
