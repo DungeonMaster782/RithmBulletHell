@@ -1,73 +1,50 @@
 import java.util.Random;
 
-/**
- * Represents a bullet in the game, handling its movement and lifecycle.
- */
 public class Bullet {
-    private double x, y;   // current position
-    private double dx, dy; // velocity components
+    private double x, y;
+    private double dx, dy;
     private final int size;
-    private boolean spinner = false; // flag to indicate spinner bullet
+    private boolean spinner = false;
     private static final Random RNG = new Random();
 
-    /**
-     * @param size diameter of the bullet in pixels
-     */
     public Bullet(int size) {
         this.size = size;
     }
 
-    /**
-     * Mark this bullet as spinner bullet or not
-     */
     public void setSpinner(boolean spinner) {
         this.spinner = spinner;
     }
 
-    /**
-     * @return true if this bullet was fired from spinner
-     */
     public boolean isSpinner() {
         return spinner;
     }
 
-    /**
-     * Инициализация пули из рандомного X по верхней границе экрана.
-     * @param screenWidth ширина экрана
-     * @param targetX координата цели по X
-     * @param targetY координата цели по Y
-     * @param speed скорость движения
-     * @param approachTime время (ms), за которое пуля добегает до цели
-     */
     public void initRandom(int screenWidth, double targetX, double targetY, double speed, long approachTime) {
-        this.x = RNG.nextDouble() * screenWidth;
-        this.y = -size;
-        this.dx = (targetX - x) / approachTime * speed;
-        this.dy = (targetY - y) / approachTime * speed;
+        int side = RNG.nextInt(3);
+        switch (side) {
+            case 1:
+                x = -size;
+                y = RNG.nextDouble() * Config.getScreenHeight();
+                break;
+            case 2:
+                x = screenWidth + size;
+                y = RNG.nextDouble() * Config.getScreenHeight();
+                break;
+            default:
+                x = RNG.nextDouble() * screenWidth;
+                y = -size;
+        }
+        dx = (targetX - x) / approachTime * speed;
+        dy = (targetY - y) / approachTime * speed;
     }
 
-    /**
-     * Инициализация пули из заданной точки.
-     * @param spawnX стартовая координата X
-     * @param spawnY стартовая координата Y
-     * @param targetX координата цели по X
-     * @param targetY координата цели по Y
-     * @param speed скорость движения
-     * @param approachTime время (ms), за которое пуля добегает до цели
-     */
     public void initAt(int spawnX, int spawnY, double targetX, double targetY, double speed, long approachTime) {
-        this.x = spawnX;
-        this.y = spawnY;
-        this.dx = (targetX - x) / approachTime * speed;
-        this.dy = (targetY - y) / approachTime * speed;
+        x = spawnX;
+        y = spawnY;
+        dx = (targetX - x) / approachTime * speed;
+        dy = (targetY - y) / approachTime * speed;
     }
 
-    /**
-     * Обновляет положение пули и проверяет, вышла ли она за границы экрана.
-     * @param screenWidth ширина экрана
-     * @param screenHeight высота экрана
-     * @return true, если пуля вышла за границы и должна быть удалена
-     */
     public boolean updateAndCheck(int screenWidth, int screenHeight) {
         x += dx;
         y += dy;
@@ -76,5 +53,5 @@ public class Bullet {
 
     public double getX() { return x; }
     public double getY() { return y; }
-    public int getSize()   { return size; }
+    public int getSize() { return size; }
 }

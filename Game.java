@@ -13,6 +13,9 @@ import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.image.BufferStrategy;
 import java.awt.image.BufferedImage;
+import java.awt.geom.Path2D;
+import java.awt.geom.Rectangle2D;
+import java.awt.Shape;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -25,6 +28,7 @@ import javax.sound.sampled.Clip;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
+
 
 public class Game extends Canvas implements KeyListener, Runnable {
     static {
@@ -100,6 +104,9 @@ public class Game extends Canvas implements KeyListener, Runnable {
     private final Composite hitboxComposite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f);
 
     private boolean aaDisabled = false;
+    private boolean bombWasActive = false;
+    private int savedSpawnIndex;
+    private int savedScheduleIndex;
 
     public Game() {
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
@@ -107,6 +114,7 @@ public class Game extends Canvas implements KeyListener, Runnable {
         initGrid();
         bulletSprite = createBulletSprite(Color.RED);
         spinnerBulletSprite = createBulletSprite(Color.CYAN);
+        Bomb.init(bullets,sliderLasers,spinnerManagers,WIDTH,HEIGHT);
         addKeyListener(this);
         setFocusable(true);
         requestFocus();
@@ -276,152 +284,224 @@ public class Game extends Canvas implements KeyListener, Runnable {
         }
     }
 
-    private void update() {
-        if (paused) return;
-        long elapsed = musicClip != null
-            ? musicClip.getMicrosecondPosition() / 1000
-            : System.currentTimeMillis() - startTime;
-        if (invulnerable && elapsed - lastDamageTime >= INV_DURATION) invulnerable = false;
+private void update() {
+    if (paused) return;
 
-        // spawn bullet hit objects
-        while (spawnIndex < hitObjects.size() && hitObjects.get(spawnIndex).time - approachTime <= elapsed) {
-            spawnBullet(hitObjects.get(spawnIndex++));
-        }
-        // spawn slider bullets
-        while (scheduleIndex < scheduledSpawns.size() && elapsed >= scheduledSpawns.get(scheduleIndex).offset) {
-            ScheduledSpawn ss = scheduledSpawns.get(scheduleIndex++);
-            spawnSliderBullet(ss.x, ss.y);
-        }
-        // обработка спиннеров
-for (int i = spinnerManagers.size() - 1; i >= 0; i--) {
-    SpinnerManager mgr = spinnerManagers.get(i);
-    if (!mgr.update(elapsed, bullets, bulletPool, bulletSize)) {
-        spinnerManagers.remove(i);
+    // 1) вычисляем реальное прошедшее время
+    long elapsed = (musicClip != null
+        ? musicClip.getMicrosecondPosition() / 1000
+        : System.currentTimeMillis() - startTime);
+
+    // 2) проверяем состояние бомбы и обновляем
+    boolean wasActive = Bomb.isActive();
+    Bomb.update(elapsed);
+    boolean nowActive = Bomb.isActive();
+
+    // 3) при старте бомбы запоминаем индексы спавна
+    if (!wasActive && nowActive) {
+        savedSpawnIndex    = spawnIndex;
+        savedScheduleIndex = scheduleIndex;
     }
-}
 
-        // update bullets and grid
-        for (int i = bullets.size() - 1; i >= 0; i--) {
-            Bullet b = bullets.get(i);
-            double oldX = b.getX(), oldY = b.getY();
-            int oldGX = (int)(oldX / CELL), oldGY = (int)(oldY / CELL);
-            boolean removed = b.updateAndCheck(WIDTH, HEIGHT);
-            if (removed) {
-                bulletPool.addLast(bullets.remove(i));
-                if (oldGX >= 0 && oldGX < cols && oldGY >= 0 && oldGY < rows) {
-                    grid[oldGX][oldGY].remove(b);
-                }
-                continue;
+    // 4) если бомба активна — очищаем только пули и грид, выходим
+    if (nowActive) {
+        bullets.clear();
+        clearGrid();
+        return;
+    }
+
+    // 5) при окончании бомбы пропускаем все события спавна, что должны были произойти
+    if (wasActive && !nowActive) {
+        while (spawnIndex < hitObjects.size() &&
+               hitObjects.get(spawnIndex).time - approachTime <= elapsed) {
+            spawnIndex++;
+        }
+        while (scheduleIndex < scheduledSpawns.size() &&
+               scheduledSpawns.get(scheduleIndex).offset <= elapsed) {
+            scheduleIndex++;
+        }
+    }
+
+    // 6) сброс неуязвимости
+    if (invulnerable && elapsed - lastDamageTime >= INV_DURATION) {
+        invulnerable = false;
+    }
+
+    // 7) спавн пулевых объектов
+    while (spawnIndex < hitObjects.size() &&
+           hitObjects.get(spawnIndex).time - approachTime <= elapsed) {
+        spawnBullet(hitObjects.get(spawnIndex++));
+    }
+
+    // 8) спавн лазерных пуль
+    while (scheduleIndex < scheduledSpawns.size() &&
+           elapsed >= scheduledSpawns.get(scheduleIndex).offset) {
+        ScheduledSpawn ss = scheduledSpawns.get(scheduleIndex++);
+        spawnSliderBullet(ss.x, ss.y);
+    }
+
+    // 9) обновление спиннеров
+    for (int i = spinnerManagers.size() - 1; i >= 0; i--) {
+        SpinnerManager mgr = spinnerManagers.get(i);
+        if (!mgr.update(elapsed, bullets, bulletPool, bulletSize)) {
+            spinnerManagers.remove(i);
+        }
+    }
+
+    // 10) обновление пуль и грида
+    for (int i = bullets.size() - 1; i >= 0; i--) {
+        Bullet b = bullets.get(i);
+        double oldX = b.getX(), oldY = b.getY();
+        int oldGX = (int)(oldX / CELL), oldGY = (int)(oldY / CELL);
+
+        boolean removed = b.updateAndCheck(WIDTH, HEIGHT);
+        if (removed) {
+            bulletPool.addLast(bullets.remove(i));
+            if (oldGX >= 0 && oldGX < cols && oldGY >= 0 && oldGY < rows) {
+                grid[oldGX][oldGY].remove(b);
             }
-            int newGX = (int)(b.getX() / CELL), newGY = (int)(b.getY() / CELL);
-            if (newGX != oldGX || newGY != oldGY) {
-                if (oldGX >= 0 && oldGX < cols && oldGY >= 0 && oldGY < rows) {
-                    grid[oldGX][oldGY].remove(b);
-                }
-                if (newGX >= 0 && newGX < cols && newGY >= 0 && newGY < rows) {
-                    grid[newGX][newGY].add(b);
-                }
+            continue;
+        }
+
+        int newGX = (int)(b.getX() / CELL), newGY = (int)(b.getY() / CELL);
+        if (newGX != oldGX || newGY != oldGY) {
+            if (oldGX >= 0 && oldGX < cols && oldGY >= 0 && oldGY < rows) {
+                grid[oldGX][oldGY].remove(b);
+            }
+            if (newGX >= 0 && newGX < cols && newGY >= 0 && newGY < rows) {
+                grid[newGX][newGY].add(b);
             }
         }
-        // collision detection
-        int pcx = (int)((playerX + playerSize / 2.0) / CELL);
-        int pcy = (int)((playerY + playerSize / 2.0) / CELL);
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                int gx = pcx + dx, gy = pcy + dy;
-                if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
-                for (Bullet b : grid[gx][gy]) {
-                    if (!invulnerable) {
-                        double cx = playerX + playerSize / 2.0;
-                        double cy = playerY + playerSize / 2.0;
-                        double dx2 = b.getX() - cx;
-                        double dy2 = b.getY() - cy;
-                        double rsum = b.getSize() / 2.0 + hitboxRadius;
-                        if (dx2 * dx2 + dy2 * dy2 <= rsum * rsum) {
-                            invulnerable = true;
-                            lastDamageTime = elapsed;
-                            lives--;
-                            if (lives <= 0) {
-                                gameOver();
-                                return;
-                            }
+    }
+
+    // 11) проверка столкновений и урон от пуль
+    int pcx = (int)((playerX + playerSize / 2.0) / CELL);
+    int pcy = (int)((playerY + playerSize / 2.0) / CELL);
+    for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            int gx = pcx + dx, gy = pcy + dy;
+            if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+            for (Bullet b : grid[gx][gy]) {
+                if (!invulnerable) {
+                    double cx = playerX + playerSize / 2.0;
+                    double cy = playerY + playerSize / 2.0;
+                    double dx2 = b.getX() - cx;
+                    double dy2 = b.getY() - cy;
+                    double rsum = b.getSize() / 2.0 + hitboxRadius;
+                    if (dx2 * dx2 + dy2 * dy2 <= rsum * rsum) {
+                        invulnerable = true;
+                        lastDamageTime = elapsed;
+                        lives--;
+                        if (lives <= 0) {
+                            gameOver();
+                            return;
                         }
                     }
                 }
             }
         }
-        // move player
-        double spd = slowMode ? slowSpeed : playerSpeed;
-        if (left) playerX = Math.max(0, playerX - spd);
-        if (right) playerX = Math.min(WIDTH - playerSize, playerX + spd);
-        if (up) playerY = Math.max(0, playerY - spd);
-        if (down) playerY = Math.min(HEIGHT - playerSize, playerY + spd);
     }
 
-    private void renderFrame(BufferStrategy bs) {
-        Graphics2D g = (Graphics2D) bs.getDrawGraphics();
-        if (!aaDisabled) {
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
-            aaDisabled = true;
-        }
-        // draw background
-        if (backgroundImage != null) {
-            g.drawImage(backgroundImage, 0, 0, WIDTH, HEIGHT, null);
-            Composite oldComp = g.getComposite();
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, backgroundDim));
-            g.setColor(Color.BLACK);
-            g.fillRect(0, 0, WIDTH, HEIGHT);
-            g.setComposite(oldComp);
-        } else {
-            g.setColor(Color.BLACK);
-            g.fillRect(0, 0, WIDTH, HEIGHT);
-        }
-        long elapsed = musicClip != null
-            ? musicClip.getMicrosecondPosition() / 1000
-            : System.currentTimeMillis() - startTime;
-        // HUD
-        g.setColor(Color.WHITE);
-        g.setFont(hudFont);
-        g.drawString(mapTitle, 20, 20);
-        g.drawString("Lives: " + lives, WIDTH - 100, 20);
-        // draw player
-        boolean drawPlayer = true;
-        if (invulnerable && elapsed - lastDamageTime < INV_DURATION) {
-            if (((elapsed - lastDamageTime) / BLINK_INTERVAL) % 2 == 0) drawPlayer = false;
-        }
-        int px = (int) playerX;
-        int py = (int) playerY;
-        if (drawPlayer) {
-            if (playerTexture != null) {
-                g.drawImage(playerTexture, px, py, playerSize, playerSize, null);
-            } else {
-                g.fillRect(px, py, playerSize, playerSize);
+    // 12) проверка столкновений и урон от лазеров (новый код)
+    for (SliderLaser sl : sliderLasers) {
+    Shape laserShape = sl.getCollisionShape(WIDTH, HEIGHT, elapsed);
+    if (laserShape != null) {
+        Rectangle2D playerBox =
+            new Rectangle2D.Double(playerX, playerY, playerSize, playerSize);
+        if (!invulnerable && laserShape.intersects(playerBox)) {
+            invulnerable   = true;
+            lastDamageTime = elapsed;
+            lives--;
+            if (lives <= 0) {
+                gameOver();
+                return;
             }
         }
-        g.setComposite(hitboxComposite);
-        g.setStroke(hitboxStroke);
-        g.drawOval(
-            px + playerSize / 2 - hitboxRadius,
-            py + playerSize / 2 - hitboxRadius,
-            hitboxRadius * 2,
-            hitboxRadius * 2
-        );
-        g.setComposite(defaultComposite);
-        // draw bullets
+    }
+}
+
+    // 13) движение игрока
+    double spd = slowMode ? slowSpeed : playerSpeed;
+    if (left)  playerX = Math.max(0, playerX - spd);
+    if (right) playerX = Math.min(WIDTH - playerSize, playerX + spd);
+    if (up)    playerY = Math.max(0, playerY - spd);
+    if (down)  playerY = Math.min(HEIGHT - playerSize, playerY + spd);
+}
+
+
+
+private void renderFrame(BufferStrategy bs) {
+    Graphics2D g = (Graphics2D) bs.getDrawGraphics();
+    if (!aaDisabled) {
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+        aaDisabled = true;
+    }
+    // background...
+    if (backgroundImage != null) {
+        g.drawImage(backgroundImage, 0, 0, WIDTH, HEIGHT, null);
+        Composite oldComp = g.getComposite();
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, backgroundDim));
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, WIDTH, HEIGHT);
+        g.setComposite(oldComp);
+    } else {
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, WIDTH, HEIGHT);
+    }
+
+    long elapsed = (musicClip != null)
+        ? musicClip.getMicrosecondPosition() / 1000
+        : System.currentTimeMillis() - startTime;
+
+    // HUD
+    g.setColor(Color.WHITE);
+    g.setFont(hudFont);
+    g.drawString(mapTitle, 20, 20);
+    g.drawString("Lives: " + lives, WIDTH - 100, 20);
+
+    // player draw...
+    boolean drawPlayer = true;
+    if (invulnerable && elapsed - lastDamageTime < INV_DURATION) {
+        if (((elapsed - lastDamageTime) / BLINK_INTERVAL) % 2 == 0) {
+            drawPlayer = false;
+        }
+    }
+    int px = (int) playerX, py = (int) playerY;
+    if (drawPlayer) {
+        if (playerTexture != null) {
+            g.drawImage(playerTexture, px, py, playerSize, playerSize, null);
+        } else {
+            g.fillRect(px, py, playerSize, playerSize);
+        }
+    }
+    g.setComposite(hitboxComposite);
+    g.setStroke(hitboxStroke);
+    g.drawOval(px + playerSize/2 - hitboxRadius, py + playerSize/2 - hitboxRadius,
+               hitboxRadius*2, hitboxRadius*2);
+    g.setComposite(defaultComposite);
+
+    // HUD + fullscreen-эффект бомбы
+    Bomb.render(g, elapsed);
+
+    // draw bullets and lasers only if not in bomb
+    if (!Bomb.isActive()) {
         for (Bullet b : bullets) {
-            int bx = (int) (b.getX() - b.getSize() / 2);
-            int by = (int) (b.getY() - b.getSize() / 2);
+            int bx = (int)(b.getX() - b.getSize()/2);
+            int by = (int)(b.getY() - b.getSize()/2);
             BufferedImage sprite = b.isSpinner() ? spinnerBulletSprite : bulletSprite;
             g.drawImage(sprite, bx, by, null);
         }
-        // draw slider lasers
         for (SliderLaser sl : sliderLasers) {
             sl.render(g, WIDTH, HEIGHT, (int) elapsed);
         }
-        g.dispose();
-        bs.show();
     }
+
+    g.dispose();
+    bs.show();
+}
+
+
 
     private void spawnBullet(OsuParser.HitObject ho) {
         Bullet b = bulletPool.pollFirst();
@@ -499,7 +579,12 @@ for (int i = spinnerManagers.size() - 1; i >= 0; i--) {
                 if (paused) musicClip.stop();
                 else musicClip.start();
             }
-        } else if (code == KeyEvent.VK_ESCAPE) {
+        } else if (code == KeyEvent.VK_X) {
+        long elapsed = (musicClip != null
+            ? musicClip.getMicrosecondPosition()/1000
+            : System.currentTimeMillis() - startTime);
+        Bomb.activate(playerX + playerSize/2.0, playerY + playerSize/2.0, elapsed);
+}  else if (code == KeyEvent.VK_ESCAPE) {
             Window w = SwingUtilities.getWindowAncestor(this);
             if (w != null) w.dispose();
             System.exit(0);
