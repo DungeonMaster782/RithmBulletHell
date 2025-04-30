@@ -28,6 +28,7 @@ import javax.sound.sampled.Clip;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
+import java.awt.BufferCapabilities;
 
 
 public class Game extends Canvas implements KeyListener, Runnable {
@@ -42,11 +43,18 @@ public class Game extends Canvas implements KeyListener, Runnable {
     private static final int BLINK_INTERVAL = 200;
 
     private final int playerSize = 40;
-    private final int bulletSize = 12;
+    private final int bulletSize = 13;
     private final int maxLives = 5;
 
-    private final double playerSpeed = Config.getPlayerSpeed();
-    private final double slowSpeed = Config.getSlowSpeed();
+
+
+    private static final double SPEED_SCALE = 20.0;
+
+    private long prevElapsedTime = -1;
+
+    private final double playerSpeedPerSec = Config.getPlayerSpeed() * SPEED_SCALE;
+
+    private final double slowSpeedPerSec   = Config.getSlowSpeed()   * SPEED_SCALE;
     private final double bulletSpeed = Config.getBulletSpeed();
     private final int hitboxRadius = Config.getHitboxRadius();
 
@@ -67,6 +75,10 @@ public class Game extends Canvas implements KeyListener, Runnable {
     private long startTime;
     private boolean running;
     private boolean paused;
+
+    private int fps;             // текущее значение FPS
+    private int frames;          // накопленные кадры
+    private long fpsTimer;       // таймер для отсчёта секунды
 
     private double playerX;
     private double playerY;
@@ -236,7 +248,13 @@ public class Game extends Canvas implements KeyListener, Runnable {
                 ss.y = ts.ctrlPts.get(k).y;
                 scheduledSpawns.add(ss);
             }
-            sliderLasers.add(new SliderLaser(ts.ctrlPts, ts.time, approachTime, totalDur));
+             // Preview за 1000ms до ts.time, затем сам слайдер длится totalDur
+        sliderLasers.add(new SliderLaser(
+            ts.ctrlPts,
+            ts.time,
+            1000,       // ровно 1 сек до startTime — показываем синий
+            totalDur    // длительность самого опасного лазера
+        ));
         }
         scheduledSpawns.sort(Comparator.comparingLong(s -> s.offset));
     }
@@ -256,41 +274,76 @@ public class Game extends Canvas implements KeyListener, Runnable {
         }
     }
 
-    @Override
-    public void run() {
-        createBufferStrategy(3);
-        BufferStrategy bs = getBufferStrategy();
-        long lastTime = System.nanoTime();
-        int fpsLimit = Config.getMaxFPS();
-        long nsPerFrame = fpsLimit > 0 ? 1_000_000_000L / fpsLimit : 0;
-        while (running) {
-            long now = System.nanoTime();
-            boolean doFrame = fpsLimit <= 0 || now - lastTime >= nsPerFrame;
-            if (doFrame) {
-                lastTime = now;
-                update();
-                renderFrame(bs);
-                if (Config.isVSyncEnabled()) Toolkit.getDefaultToolkit().sync();
-            } else {
-                long sleep = nsPerFrame - (now - lastTime);
-                if (sleep > 0) {
-                    try {
-                        Thread.sleep(sleep / 1_000_000, (int)(sleep % 1_000_000));
-                    } catch (InterruptedException ignored) {}
-                } else {
-                    Thread.yield();
+
+@Override
+public void run() {
+    // 1) Настраиваем triple-buffering
+    createBufferStrategy(3);
+    BufferStrategy bs = getBufferStrategy();
+
+    // 2) Читаем лимит FPS и считаем наносекунды на кадр
+    int fpsLimit    = Config.getMaxFPS();                      // например, 60
+    long nsPerFrame = fpsLimit > 0 ? 1_000_000_000L / fpsLimit : 0;
+
+    // 3) Инициализируем переменные для подсчёта FPS
+    long lastTime = System.nanoTime();
+    fpsTimer = lastTime;
+    frames   = 0;
+
+    // 4) Игровой цикл
+    while (running) {
+        // Метка начала кадра
+        long frameStart = System.nanoTime();
+
+        // Логика и рендер
+        update();
+        renderFrame(bs);
+
+        // FPS-счётчик
+        frames++;
+        if (frameStart - fpsTimer >= 1_000_000_000L) {
+            fps        = frames;
+            frames     = 0;
+            fpsTimer  += 1_000_000_000L;
+        }
+
+        // По желанию синхронизируемся через Toolkit (не настоящий V-Sync, но может помочь)
+        if (Config.isVSyncEnabled()) {
+            Toolkit.getDefaultToolkit().sync();
+        }
+
+        // 5) Ждём остаток времени до следующей итерации, чтобы не превышать fpsLimit
+        if (nsPerFrame > 0) {
+            long frameTime = System.nanoTime() - frameStart;
+            long sleepNs   = nsPerFrame - frameTime;
+            if (sleepNs > 0) {
+                try {
+                    Thread.sleep(sleepNs / 1_000_000L, (int)(sleepNs % 1_000_000L));
+                } catch (InterruptedException ignored) {
                 }
+            } else {
+                // если мы уже опоздали, даём другим потокам шанс
+                Thread.yield();
             }
         }
     }
+}
+
+
 
 private void update() {
     if (paused) return;
 
     // 1) вычисляем реальное прошедшее время
     long elapsed = (musicClip != null
-        ? musicClip.getMicrosecondPosition() / 1000
-        : System.currentTimeMillis() - startTime);
+         ? musicClip.getMicrosecondPosition() / 1000
+         : System.currentTimeMillis() - startTime);
+    // считаем дельта-время между кадрами в секундах
+    double dtSec = prevElapsedTime >= 0
+        ? (elapsed - prevElapsedTime) / 1000.0
+        : 0.0;
+    prevElapsedTime = elapsed;
+
 
     // 2) проверяем состояние бомбы и обновляем
     boolean wasActive = Bomb.isActive();
@@ -348,31 +401,35 @@ private void update() {
         }
     }
 
-    // 10) обновление пуль и грида
-    for (int i = bullets.size() - 1; i >= 0; i--) {
-        Bullet b = bullets.get(i);
-        double oldX = b.getX(), oldY = b.getY();
-        int oldGX = (int)(oldX / CELL), oldGY = (int)(oldY / CELL);
+    // 10) обновление пуль и грида (с учётом dtSec)
+for (int i = bullets.size() - 1; i >= 0; i--) {
+    Bullet bullet = bullets.get(i);
+    double oldX = bullet.getX(), oldY = bullet.getY();
+    int oldGX = (int)(oldX / CELL), oldGY = (int)(oldY / CELL);
 
-        boolean removed = b.updateAndCheck(WIDTH, HEIGHT);
-        if (removed) {
-            bulletPool.addLast(bullets.remove(i));
-            if (oldGX >= 0 && oldGX < cols && oldGY >= 0 && oldGY < rows) {
-                grid[oldGX][oldGY].remove(b);
-            }
-            continue;
+    // перемещаем пулю с учётом дельта-времени
+    boolean removedBullet = bullet.updateAndCheck(WIDTH, HEIGHT, dtSec);
+    if (removedBullet) {
+        bulletPool.addLast(bullets.remove(i));
+        if (oldGX >= 0 && oldGX < cols && oldGY >= 0 && oldGY < rows) {
+            grid[oldGX][oldGY].remove(bullet);
         }
+        continue;
+    }
 
-        int newGX = (int)(b.getX() / CELL), newGY = (int)(b.getY() / CELL);
-        if (newGX != oldGX || newGY != oldGY) {
-            if (oldGX >= 0 && oldGX < cols && oldGY >= 0 && oldGY < rows) {
-                grid[oldGX][oldGY].remove(b);
-            }
-            if (newGX >= 0 && newGX < cols && newGY >= 0 && newGY < rows) {
-                grid[newGX][newGY].add(b);
-            }
+    // обновляем положение в сетке, если клетка изменилась
+    int newGX = (int)(bullet.getX() / CELL), newGY = (int)(bullet.getY() / CELL);
+    if (newGX != oldGX || newGY != oldGY) {
+        if (oldGX >= 0 && oldGX < cols && oldGY >= 0 && oldGY < rows) {
+            grid[oldGX][oldGY].remove(bullet);
+        }
+        if (newGX >= 0 && newGX < cols && newGY >= 0 && newGY < rows) {
+            grid[newGX][newGY].add(bullet);
         }
     }
+}
+
+
 
     // 11) проверка столкновений и урон от пуль
     int pcx = (int)((playerX + playerSize / 2.0) / CELL);
@@ -421,11 +478,12 @@ private void update() {
 }
 
     // 13) движение игрока
-    double spd = slowMode ? slowSpeed : playerSpeed;
-    if (left)  playerX = Math.max(0, playerX - spd);
-    if (right) playerX = Math.min(WIDTH - playerSize, playerX + spd);
-    if (up)    playerY = Math.max(0, playerY - spd);
-    if (down)  playerY = Math.min(HEIGHT - playerSize, playerY + spd);
+    double unitsPerSec = slowMode ? slowSpeedPerSec : playerSpeedPerSec;
+    double moveDist   = unitsPerSec * dtSec;
+    if (left)  playerX = Math.max(0, playerX - moveDist);
+    if (right) playerX = Math.min(WIDTH - playerSize, playerX + moveDist);
+    if (up)    playerY = Math.max(0, playerY - moveDist);
+    if (down)  playerY = Math.min(HEIGHT - playerSize, playerY + moveDist);
 }
 
 
@@ -459,7 +517,7 @@ private void renderFrame(BufferStrategy bs) {
     g.setFont(hudFont);
     g.drawString(mapTitle, 20, 20);
     g.drawString("Lives: " + lives, WIDTH - 100, 20);
-
+    g.drawString("FPS: " + fps, 20, HEIGHT - 20);
     // player draw...
     boolean drawPlayer = true;
     if (invulnerable && elapsed - lastDamageTime < INV_DURATION) {

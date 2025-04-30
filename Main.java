@@ -6,6 +6,7 @@ public class Main {
     public static final File BEATMAPS_DIR = new File("beatmaps");
 
     public static void main(String[] args) {
+
         // Включаем аппаратное ускорение Java2D (OpenGL/D3D) до инициализации Swing
         System.setProperty("sun.java2d.opengl", "true");
         System.setProperty("sun.java2d.d3d",    "true");

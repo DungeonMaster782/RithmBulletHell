@@ -12,9 +12,9 @@ public class Config {
     private static BufferedImage playerTexture = null;
 
     // Default values (change here)
-    private static final double DEFAULT_PLAYER_SPEED       = 2.0;
-    private static final double DEFAULT_BULLET_SPEED       = 4.0;
-    private static final double DEFAULT_SLOW_SPEED         = 1.0;
+    private static final double DEFAULT_PLAYER_SPEED       = 30.0;
+    private static final double DEFAULT_BULLET_SPEED       = 400.0;
+    private static final double DEFAULT_SLOW_SPEED         = 15.0;
     private static final int    DEFAULT_SCREEN_WIDTH       = 1280;
     private static final int    DEFAULT_SCREEN_HEIGHT      = 800;
     private static final int    DEFAULT_HITBOX_RADIUS      = 5;

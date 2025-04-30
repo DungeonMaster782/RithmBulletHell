@@ -14,7 +14,8 @@ public class SpinnerManager {
     private long lastEmit;
     private final double angleStep;
     private final long fireInterval;
-    private final double bulletSpeed;
+    private static final double BULLET_SPEED_SCALE = 200.0;
+    private final double bulletSpeed; // теперь в px/с
     private static final double RADIUS = 100.0;
 
     public SpinnerManager(int x, int y, long startTime, long endTime) {
@@ -26,7 +27,7 @@ public class SpinnerManager {
         this.fireInterval = Config.getSpinnerFireInterval();
         this.lastEmit  = startTime - fireInterval;
         this.angleStep = Config.getSpinnerRotationSpeed();
-        this.bulletSpeed = Config.getSpinnerBulletSpeed();
+        this.bulletSpeed = Config.getSpinnerBulletSpeed() * BULLET_SPEED_SCALE;
     }
 
     /**
