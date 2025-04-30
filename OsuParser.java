@@ -1,46 +1,50 @@
+// OsuParser.java
 import java.io.*;
 import java.util.*;
 import java.awt.Point;
 import javax.sound.sampled.*;
 
-/**
- * Парсер .osu-файлов с поддержкой загрузки аудио.
- */
 public class OsuParser {
 
-    /**
-     * DTO-класс для результатов парсинга:
-     * хит-объекты, слайдеры, тайминги и аудио.
-     */
+    /** DTO-класс для результатов парсинга: хит-объекты, слайдеры, спиннеры, тайминги и аудио. */
     public static class OsuMapData {
         public final List<HitObject> hitObjects;
         public final List<TempSlider> tempSliders;
+        public final List<Spinner> spinners;
         public final double approachTime;
         public final double sliderMultiplier;
         public final double beatLength;
         public final Clip   musicClip;
 
-        public OsuMapData(List<HitObject> hitObjects,
-                          List<TempSlider> tempSliders,
-                          double approachTime,
-                          double sliderMultiplier,
-                          double beatLength,
-                          Clip musicClip) {
-            this.hitObjects      = hitObjects;
-            this.tempSliders     = tempSliders;
-            this.approachTime    = approachTime;
-            this.sliderMultiplier= sliderMultiplier;
-            this.beatLength      = beatLength;
-            this.musicClip       = musicClip;
+        public OsuMapData(
+            List<HitObject> hitObjects,
+            List<TempSlider> tempSliders,
+            List<Spinner> spinners,
+            double approachTime,
+            double sliderMultiplier,
+            double beatLength,
+            Clip musicClip
+        ) {
+            this.hitObjects       = hitObjects;
+            this.tempSliders      = tempSliders;
+            this.spinners         = spinners;
+            this.approachTime     = approachTime;
+            this.sliderMultiplier = sliderMultiplier;
+            this.beatLength       = beatLength;
+            this.musicClip        = musicClip;
         }
     }
 
-    /**
-     * Логика парсинга .osu-файла и загрузки аудио.
-     * @param dir директория с картой
-     * @param osuFile имя .osu-файла
-     * @return собранные данные по карте
-     */
+    /** Класс для спиннеров */
+    public static class Spinner {
+        public final int x, y;
+        public final long startTime, endTime;
+        public Spinner(int x, int y, long startTime, long endTime) {
+            this.x = x; this.y = y;
+            this.startTime = startTime; this.endTime = endTime;
+        }
+    }
+
     public OsuMapData parse(File dir, String osuFile) {
         double approachTime     = 1500;
         double sliderMultiplier = 1.4;
@@ -48,6 +52,7 @@ public class OsuParser {
 
         List<HitObject> hitObjects   = new ArrayList<>();
         List<TempSlider> tempSliders = new ArrayList<>();
+        List<Spinner> spinners        = new ArrayList<>();
 
         boolean inDiff = false, inTiming = false, inHits = false;
         File osu = new File(dir, osuFile);
@@ -84,7 +89,12 @@ public class OsuParser {
                     int x = Integer.parseInt(p[0]), y = Integer.parseInt(p[1]);
                     long t = Long.parseLong(p[2]);
                     int type = Integer.parseInt(p[3]);
-                    if ((type & 2)!=0 && p.length>7) {
+
+                    if ((type & 8) != 0 && p.length > 5) {
+                        long end = Long.parseLong(p[5]);
+                        spinners.add(new Spinner(x, y, t, end));
+                    }
+                    else if ((type & 2) != 0 && p.length>7) {
                         TempSlider ts = new TempSlider();
                         ts.time     = t;
                         ts.repeats  = Integer.parseInt(p[6]);
@@ -100,7 +110,8 @@ public class OsuParser {
                             ));
                         }
                         tempSliders.add(ts);
-                    } else if ((type & 1)!=0) {
+                    }
+                    else if ((type & 1) != 0) {
                         hitObjects.add(new HitObject(x,y,t));
                     }
                 }
@@ -140,7 +151,9 @@ public class OsuParser {
             e.printStackTrace();
         }
 
-        return new OsuMapData(hitObjects, tempSliders, approachTime, sliderMultiplier, beatLength, musicClip);
+        return new OsuMapData(hitObjects, tempSliders, spinners,
+                              approachTime, sliderMultiplier, beatLength,
+                              musicClip);
     }
 
     private String getAudioFilename(File osu) throws IOException {
@@ -154,19 +167,14 @@ public class OsuParser {
         return null;
     }
 
-    /** Вспомогательный класс для хит-объектов */
     public static class HitObject {
         public final int x, y;
         public final long time;
-        public HitObject(int x, int y, long time) {
-            this.x = x; this.y = y; this.time = time;
-        }
+        public HitObject(int x, int y, long time) { this.x = x; this.y = y; this.time = time; }
     }
-
-    /** Вспомогательный класс для временных слайдеров */
     public static class TempSlider {
         public long time;
-        public int    repeats;
+        public int repeats;
         public double pixelLen;
         public List<Point> ctrlPts;
     }

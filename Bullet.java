@@ -7,6 +7,7 @@ public class Bullet {
     private double x, y;   // current position
     private double dx, dy; // velocity components
     private final int size;
+    private boolean spinner = false; // flag to indicate spinner bullet
     private static final Random RNG = new Random();
 
     /**
@@ -14,6 +15,20 @@ public class Bullet {
      */
     public Bullet(int size) {
         this.size = size;
+    }
+
+    /**
+     * Mark this bullet as spinner bullet or not
+     */
+    public void setSpinner(boolean spinner) {
+        this.spinner = spinner;
+    }
+
+    /**
+     * @return true if this bullet was fired from spinner
+     */
+    public boolean isSpinner() {
+        return spinner;
     }
 
     /**
