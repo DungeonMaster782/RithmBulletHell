@@ -1,0 +1,2 @@
+bullet_multiplier=0.1
+bullet_speed=1.0
