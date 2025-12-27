@@ -22,7 +22,12 @@ local titleFont = nil
 local menuFont = nil
 local backgroundImage = nil
 local particleSystem = nil
+local backgroundVideo = nil
+local backgroundDim = 0.5
+local showVideo = true
 local pauseTime = 0 -- Время начала паузы
+local videoUnsupported = false -- Флаг для отображения предупреждения
+local videoOffset = 0 -- Смещение видео (из .osu файла)
 
 -- ======= CONFIG LOADING =======
 local function load_config()
@@ -51,13 +56,15 @@ local function parse_osu(path)
     local objects = {}
     local ar = 5
     local audio_filename = "audio.mp3"
+    local video_filename = nil
+    local video_offset = 0
     local inHitObjects = false
 
     local file = love.filesystem.newFile(path)
     local ok, err = file:open("r")
     if not ok then
         print("WARNING: failed to open osu file:", path, err)
-        return {}, ar, audio_filename
+        return {}, ar, audio_filename, nil, 0
     end
 
     for line in file:lines() do
@@ -65,6 +72,14 @@ local function parse_osu(path)
             audio_filename = line:match("AudioFilename:%s*(.+)")
         elseif line:match("^ApproachRate:") then
             ar = tonumber(line:match("ApproachRate:%s*(%d+%.?%d*)"))
+        elseif not inHitObjects and (line:match("^Video,") or line:match("^1,")) then
+            local parts = {}
+            for part in line:gmatch("[^,]+") do table.insert(parts, part) end
+            if #parts >= 3 then
+                video_offset = tonumber(parts[2]) or 0
+                video_filename = parts[3]:match("^\"?(.-)\"?$") -- remove quotes
+                if video_filename then video_filename = video_filename:gsub("\\", "/") end
+            end
         elseif line:match("^%[HitObjects%]") then
             inHitObjects = true
         elseif inHitObjects and line ~= "" and not line:match("^%[") then
@@ -107,7 +122,7 @@ local function parse_osu(path)
     end
     file:close()
     print("[OSU] Parsed " .. #objects .. " objects. AR: " .. ar .. ", Audio: " .. audio_filename)
-    return objects, ar, audio_filename
+    return objects, ar, audio_filename, video_filename, video_offset
 end
 
 local function calc_preempt(ar)
@@ -122,7 +137,7 @@ local function calc_preempt(ar)
 end
 
 -- ======= GAME FUNCTIONS =======
-function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed, show_hitbox, show_bullet_hitboxes)
+function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed, show_hitbox, show_bullet_hitboxes, bg_dim, enable_video)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
     load_config()
     -- Применяем настройки, переданные из меню (они приоритетнее файла)
@@ -134,10 +149,15 @@ function game.load(song, difficulty, initial_lives, controls_mode, bg_image, mus
 
     local map_path = "maps/" .. song .. "/" .. difficulty
     backgroundImage = bg_image
+    backgroundDim = bg_dim or 0.5
+    showVideo = (enable_video == nil) and true or enable_video
+    backgroundVideo = nil
+    videoUnsupported = false
+    videoOffset = 0
     state = "playing"
     menu_selection = 1
-    local audio_name
-    hitObjects, approachRate, audio_name = parse_osu(map_path)
+    local audio_name, video_name
+    hitObjects, approachRate, audio_name, video_name, videoOffset = parse_osu(map_path)
     preempt = calc_preempt(approachRate)
 
     -- Ensure hit objects use the AR-based preempt, not the default value captured during parsing
@@ -180,6 +200,43 @@ function game.load(song, difficulty, initial_lives, controls_mode, bg_image, mus
     player.speed = 200 * (config.player_speed or 1.0) -- Применяем множитель скорости игрока
     if controls_mode then
         player.set_controls_mode(controls_mode)
+    end
+
+    -- Загрузка видео
+    if video_name then
+        local video_path = "maps/" .. song .. "/" .. video_name
+        
+        -- Проверяем наличие .ogv версии, так как LÖVE не читает mp4
+        local ext = video_name:match("%.([^%.]+)$")
+        if ext and (ext:lower() == "mp4" or ext:lower() == "avi" or ext:lower() == "mkv") then
+            local ogv_name = video_name:gsub("%.[^%.]+$", ".ogv")
+            local ogv_path = "maps/" .. song .. "/" .. ogv_name
+            if love.filesystem.getInfo(ogv_path) then
+                print("[VIDEO] Found converted OGV file: " .. ogv_path)
+                video_path = ogv_path
+            end
+        end
+
+        if love.filesystem.getInfo(video_path) then
+            local success, v = pcall(love.graphics.newVideo, video_path)
+            if success then
+                backgroundVideo = v
+                if backgroundVideo:getSource() then backgroundVideo:getSource():setVolume(0) end -- Mute video audio
+                
+                -- Если оффсет отрицательный (видео началось раньше песни), перематываем
+                if videoOffset <= 0 then
+                    backgroundVideo:play()
+                    backgroundVideo:seek(-videoOffset / 1000)
+                end
+                print("[VIDEO] Loaded video: " .. video_path .. " Offset: " .. videoOffset)
+            else
+                print("[VIDEO] Failed to load video: " .. video_path)
+                if video_path:match("%.mp4$") or video_path:match("%.avi$") then
+                    print("[VIDEO] NOTE: LÖVE engine typically supports only Ogg Theora (.ogv) videos!")
+                    videoUnsupported = true
+                end
+            end
+        end
     end
 
     bullets.load()
@@ -225,6 +282,13 @@ function game.update(dt)
 
     local currentTime = (love.timer.getTime() - mapStartTime) * 1000
 
+    -- Запуск видео с задержкой (если videoOffset > 0)
+    if backgroundVideo and not backgroundVideo:isPlaying() and showVideo and state == "playing" then
+        if videoOffset > 0 and currentTime >= videoOffset then
+             backgroundVideo:play()
+        end
+    end
+
     if particleSystem then particleSystem:update(dt) end
 
     -- Проверка на смерть
@@ -233,6 +297,7 @@ function game.update(dt)
         state = "game_over"
         menu_selection = 1
         if music then music:stop() end
+        if backgroundVideo then backgroundVideo:pause() end
         return
     end
 
@@ -319,18 +384,39 @@ function game.update(dt)
         state = "victory"
         menu_selection = 1
         if music then music:stop() end
+        if backgroundVideo then backgroundVideo:pause() end
     end
 end
 
 function game.draw()
-    -- Отрисовка фона (затемненного)
+    -- Отрисовка фона / видео
+    love.graphics.setColor(1, 1, 1, 1)
+    
     if backgroundImage then
-        love.graphics.setColor(1, 1, 1, 0.3) -- Прозрачность 0.3 для затемнения
         local sx = love.graphics.getWidth() / backgroundImage:getWidth()
         local sy = love.graphics.getHeight() / backgroundImage:getHeight()
         local s = math.max(sx, sy) -- Cover mode (заполнение экрана)
         love.graphics.draw(backgroundImage, 0, 0, 0, s, s)
     end
+
+    if backgroundVideo and showVideo then
+        local vw, vh = backgroundVideo:getDimensions()
+        local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+        local scale = math.max(sw/vw, sh/vh)
+        love.graphics.draw(backgroundVideo, 0, 0, 0, scale, scale)
+    elseif showVideo and videoUnsupported then
+        -- Если видео включено, но формат не поддерживается
+        love.graphics.setColor(1, 0, 0, 0.7)
+        love.graphics.print("Video format not supported (MP4). Run convert_videos.bat!", 10, 40)
+    end
+
+    -- Затемнение фона (Background Dim)
+    if backgroundDim > 0 then
+        love.graphics.setColor(0, 0, 0, backgroundDim)
+        love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+    end
+    
+    love.graphics.setColor(1, 1, 1, 1)
 
     love.graphics.print("Move with arrows, ESC to quit", 10, love.graphics.getHeight() - 30)
 
@@ -421,7 +507,15 @@ function game.draw()
 
         if state == "paused" then
             title = "PAUSED"
-            options = {"Resume", "Restart", "Volume: " .. math.floor(current_volume * 100) .. "%", "Exit"}
+            local vid_status = showVideo and "On" or "Off"
+            options = {
+                "Resume", 
+                "Restart", 
+                "Volume: " .. math.floor(current_volume * 100) .. "%", 
+                "Dim: " .. math.floor(backgroundDim * 100) .. "%",
+                "Video: " .. vid_status,
+                "Exit"
+            }
         elseif state == "game_over" then
             title = "GAME OVER"
             love.graphics.setColor(1, 0, 0, 1)
@@ -450,7 +544,7 @@ function game.draw()
         end
         
         -- Подсказка для громкости
-        if state == "paused" and options[menu_selection]:match("Volume") then
+        if state == "paused" and (options[menu_selection]:match("Volume") or options[menu_selection]:match("Dim") or options[menu_selection]:match("Video")) then
             love.graphics.setColor(0.7, 0.7, 0.7, 1)
             love.graphics.print("< Left / Right >", cx + 80, cy - 40 + 3 * 30)
         end
@@ -464,6 +558,7 @@ function game.keypressed(key)
             state = "paused"
             pauseTime = love.timer.getTime() -- Фиксируем время начала паузы
             if music then music:pause() end
+            if backgroundVideo then backgroundVideo:pause() end
             menu_selection = 1
         elseif key == "space" then
             player.shoot()
@@ -474,25 +569,40 @@ function game.keypressed(key)
             state = "playing"
             mapStartTime = mapStartTime + (love.timer.getTime() - pauseTime) -- Компенсируем время простоя
             if music then music:play() end
+            
+            -- Запускаем видео только если пришло его время
+            local t = (love.timer.getTime() - mapStartTime) * 1000
+            if backgroundVideo and (t >= videoOffset or videoOffset <= 0) then backgroundVideo:play() end
+            
         elseif key == "up" or key == "w" then
             menu_selection = math.max(1, menu_selection - 1)
         elseif key == "down" or key == "s" then
-            menu_selection = math.min(4, menu_selection + 1)
+            menu_selection = math.min(6, menu_selection + 1)
         elseif key == "left" and menu_selection == 3 then -- Volume
             current_volume = math.max(0, current_volume - 0.1)
             if music then music:setVolume(current_volume) end
         elseif key == "right" and menu_selection == 3 then -- Volume
             current_volume = math.min(1, current_volume + 0.1)
             if music then music:setVolume(current_volume) end
+        elseif key == "left" and menu_selection == 4 then -- Dim
+            backgroundDim = math.max(0, backgroundDim - 0.1)
+        elseif key == "right" and menu_selection == 4 then -- Dim
+            backgroundDim = math.min(1, backgroundDim + 0.1)
+        elseif (key == "left" or key == "right") and menu_selection == 5 then -- Video
+            showVideo = not showVideo
         elseif key == "return" or key == "space" then
             if menu_selection == 1 then -- Resume
                 state = "playing"
                 mapStartTime = mapStartTime + (love.timer.getTime() - pauseTime) -- Компенсируем время простоя
                 if music then music:play() end
+                
+                local t = (love.timer.getTime() - mapStartTime) * 1000
+                if backgroundVideo and (t >= videoOffset or videoOffset <= 0) then backgroundVideo:play() end
+                
             elseif menu_selection == 2 then -- Restart
-                return "restart", current_volume
-            elseif menu_selection == 4 then -- Exit
-                return "exit", current_volume
+                return "restart", current_volume, backgroundDim, showVideo
+            elseif menu_selection == 6 then -- Exit
+                return "exit", current_volume, backgroundDim, showVideo
             end
         end
     elseif state == "game_over" or state == "victory" then
@@ -513,7 +623,7 @@ function game.mousemoved(x, y)
         local w, h = love.graphics.getWidth(), love.graphics.getHeight()
         local cx, cy = w / 2, h / 2
         local base_y = cy - 40
-        local options_count = (state == "paused") and 4 or 2
+        local options_count = (state == "paused") and 6 or 2
         
         for i = 1, options_count do
             local opt_y = base_y + i * 30
@@ -531,7 +641,7 @@ function game.mousepressed(x, y, button)
         local cx, cy = w / 2, h / 2
         local base_y = cy - 40
         
-        local options_count = (state == "paused") and 4 or 2
+        local options_count = (state == "paused") and 6 or 2
         
         for i = 1, options_count do
             local opt_y = base_y + i * 30
@@ -542,11 +652,19 @@ function game.mousepressed(x, y, button)
                         state = "playing"
                         mapStartTime = mapStartTime + (love.timer.getTime() - pauseTime) -- Компенсируем время
                         if music then music:play() end
-                    elseif i == 2 then return "restart", current_volume
+                        
+                        local t = (love.timer.getTime() - mapStartTime) * 1000
+                        if backgroundVideo and (t >= videoOffset or videoOffset <= 0) then backgroundVideo:play() end
+                        
+                    elseif i == 2 then return "restart", current_volume, backgroundDim, showVideo
                     elseif i == 3 then -- Volume click logic
                          current_volume = (current_volume >= 1.0) and 0 or (current_volume + 0.1)
                          if music then music:setVolume(current_volume) end
-                    elseif i == 4 then return "exit", current_volume end
+                    elseif i == 4 then -- Dim click
+                        backgroundDim = (backgroundDim >= 1.0) and 0 or (backgroundDim + 0.1)
+                    elseif i == 5 then -- Video click
+                        showVideo = not showVideo
+                    elseif i == 6 then return "exit", current_volume, backgroundDim, showVideo end
                 else -- game_over or victory
                     if i == 1 then return "restart", current_volume
                     elseif i == 2 then return "exit", current_volume end
@@ -561,6 +679,10 @@ function game.stopMusic()
         music:stop()
         music = nil
     end
+    if backgroundVideo then
+        backgroundVideo:pause()
+        backgroundVideo = nil
+    end
 end
 
 function game.pause()
@@ -569,6 +691,7 @@ function game.pause()
         state = "paused"
         pauseTime = love.timer.getTime() -- Фиксируем время начала паузы
         if music then music:pause() end
+        if backgroundVideo then backgroundVideo:pause() end
         menu_selection = 1
     end
 end

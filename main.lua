@@ -46,16 +46,20 @@ settings = { -- Глобальная переменная, чтобы консо
     show_hitbox = false,
     show_bullet_hitboxes = false,
     vsync = true,
+    background_dim = 0.5,
+    show_video = true,
     max_fps = 0, -- 0 = Unlimited
     max_fps_options = {30, 60, 120, 144, 240, 0},
     max_fps_index = 6
 }
 local temp_settings = {}
-local settings_options = {"Music Volume", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "Show Hitbox", "Show Bullet Hitbox", "VSync", "Max FPS", "Apply", "Back"}
+local settings_options = {"Music Volume", "Background Dim", "Show Video", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "Show Hitbox", "Show Bullet Hitbox", "VSync", "Max FPS", "Apply", "Back"}
 local settings_selected_index = 1
 
 local notification = nil
 local notification_timer = 0
+local delete_confirmation = false
+local map_to_delete = nil
 
 local menu_music = nil
 local menu_music_path = "res/sounds/menu_music.mp3" -- путь к mp3
@@ -107,6 +111,8 @@ local function load_game_config()
             if key == "show_hitbox" then settings.show_hitbox = (value == "true") end
             if key == "show_bullet_hitboxes" then settings.show_bullet_hitboxes = (value == "true") end
             if key == "vsync" then settings.vsync = (value == "true") end
+            if key == "background_dim" then settings.background_dim = n end
+            if key == "show_video" then settings.show_video = (value == "true") end
             if key == "max_fps" then 
                 settings.max_fps = n 
                 -- Восстанавливаем индекс для меню
@@ -135,8 +141,41 @@ local function save_game_config()
     content = content .. "show_hitbox=" .. tostring(settings.show_hitbox) .. "\n"
     content = content .. "show_bullet_hitboxes=" .. tostring(settings.show_bullet_hitboxes) .. "\n"
     content = content .. "vsync=" .. tostring(settings.vsync) .. "\n"
+    content = content .. "background_dim=" .. string.format("%.2f", settings.background_dim) .. "\n"
+    content = content .. "show_video=" .. tostring(settings.show_video) .. "\n"
     content = content .. "max_fps=" .. settings.max_fps .. "\n"
     love.filesystem.write("config.txt", content)
+end
+
+local function delete_map_directory(folder_name)
+    local path = "maps/" .. folder_name
+    
+    -- 1. Удаляем из save directory (рекурсивно)
+    local function recursive_love_remove(p)
+        local info = love.filesystem.getInfo(p)
+        if not info then return end
+        
+        if info.type == "directory" then
+            for _, item in ipairs(love.filesystem.getDirectoryItems(p)) do
+                recursive_love_remove(p .. "/" .. item)
+            end
+            love.filesystem.remove(p)
+        else
+            love.filesystem.remove(p)
+        end
+    end
+    recursive_love_remove(path)
+
+    -- 2. Удаляем из папки проекта (через OS)
+    local cmd
+    if love.system.getOS() == "Windows" then
+        cmd = 'rd /s /q "' .. path:gsub("/", "\\") .. '" 2>nul'
+    else
+        cmd = 'rm -rf "' .. path .. '"'
+    end
+    os.execute(cmd)
+    
+    print("[MAPS] Deleted map: " .. folder_name)
 end
 
 -- Функции
@@ -257,6 +296,18 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                 love.graphics.rectangle("fill", bar_x, 80 + i * 30 + 2, bar_w * temp_settings.music_volume, bar_h)
                                                                                 draw_text_with_outline(math.floor(temp_settings.music_volume * 100) .. "%", bar_x + bar_w + 10, 80 + i * 30, item_color)
                                                                                 value = "" -- Уже отрисовали
+                                                                            elseif option == "Background Dim" then
+                                                                                draw_text_with_outline(prefix .. option, 70, 80 + i * 30, item_color)
+                                                                                local bar_x = 250
+                                                                                local bar_w = 200
+                                                                                local bar_h = 20
+                                                                                love.graphics.setColor(item_color)
+                                                                                love.graphics.rectangle("line", bar_x, 80 + i * 30 + 2, bar_w, bar_h)
+                                                                                love.graphics.rectangle("fill", bar_x, 80 + i * 30 + 2, bar_w * temp_settings.background_dim, bar_h)
+                                                                                draw_text_with_outline(math.floor(temp_settings.background_dim * 100) .. "%", bar_x + bar_w + 10, 80 + i * 30, item_color)
+                                                                                value = ""
+                                                                            elseif option == "Show Video" then
+                                                                                value = temp_settings.show_video and "On" or "Off"
                                                                                 elseif option == "Resolution" then
                 local r = settings.resolutions[temp_settings.resolution_index]
                                                                                     value = r[1].."x"..r[2]
@@ -287,7 +338,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                             end
             if value ~= "" then
                 draw_text_with_outline(prefix .. option .. ": " .. value, 70, 80 + i * 30, item_color)
-            elseif option ~= "Music Volume" then -- Music Volume уже отрисован выше
+            elseif option ~= "Music Volume" and option ~= "Background Dim" then -- Music Volume и Dim уже отрисованы выше
                 draw_text_with_outline(prefix .. option, 70, 80 + i * 30, item_color)
             end
                                                                                             end
@@ -304,6 +355,10 @@ if love.filesystem.getInfo(main_menu_background_path) then
             temp_settings.music_volume = math.max(0, temp_settings.music_volume - 0.05)
             settings.music_volume = temp_settings.music_volume
             if menu_music then menu_music:setVolume(settings.music_volume) end
+                                                                                                            elseif settings_options[settings_selected_index] == "Background Dim" then
+            temp_settings.background_dim = math.max(0, temp_settings.background_dim - 0.05)
+                                                                                                            elseif settings_options[settings_selected_index] == "Show Video" then
+            temp_settings.show_video = not temp_settings.show_video
                                                                                                             elseif settings_options[settings_selected_index] == "Resolution" then
             temp_settings.resolution_index = math.max(1, temp_settings.resolution_index - 1)
                                                                                                                 elseif settings_options[settings_selected_index] == "Window Mode" then
@@ -337,6 +392,10 @@ if love.filesystem.getInfo(main_menu_background_path) then
             temp_settings.music_volume = math.min(1, temp_settings.music_volume + 0.05)
             settings.music_volume = temp_settings.music_volume
             if menu_music then menu_music:setVolume(settings.music_volume) end
+                                                                                                                                elseif settings_options[settings_selected_index] == "Background Dim" then
+            temp_settings.background_dim = math.min(1, temp_settings.background_dim + 0.05)
+                                                                                                                                elseif settings_options[settings_selected_index] == "Show Video" then
+            temp_settings.show_video = not temp_settings.show_video
                                                                                                                                 elseif settings_options[settings_selected_index] == "Resolution" then
             temp_settings.resolution_index = math.min(#settings.resolutions, temp_settings.resolution_index + 1)
                                                                                                                                     elseif settings_options[settings_selected_index] == "Window Mode" then
@@ -368,6 +427,8 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                             elseif key == "return" then
         if settings_options[settings_selected_index] == "Apply" then
             settings.music_volume = temp_settings.music_volume
+            settings.background_dim = temp_settings.background_dim
+            settings.show_video = temp_settings.show_video
             settings.resolution_index = temp_settings.resolution_index
             settings.fullscreen_mode_index = temp_settings.fullscreen_mode_index
             settings.lives = temp_settings.lives
@@ -501,6 +562,18 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                     love.graphics.setColor(1, 1, 1, 1)
                                                                                                                                                                     love.graphics.printf(notification, 0, 10, love.graphics.getWidth(), "center")
                                                                                                                                                                 end
+
+                                                                                                                                                                -- Окно подтверждения удаления
+                                                                                                                                                                if delete_confirmation then
+                                                                                                                                                                    love.graphics.setColor(0, 0, 0, 0.9)
+                                                                                                                                                                    love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+                                                                                                                                                                    
+                                                                                                                                                                    love.graphics.setColor(1, 0, 0, 1)
+                                                                                                                                                                    draw_text_with_outline("DELETE MAP?", love.graphics.getWidth()/2 - 60, love.graphics.getHeight()/2 - 60)
+                                                                                                                                                                    love.graphics.setColor(1, 1, 1, 1)
+                                                                                                                                                                    draw_text_with_outline(map_to_delete, love.graphics.getWidth()/2 - (font:getWidth(map_to_delete)/2), love.graphics.getHeight()/2 - 20)
+                                                                                                                                                                    draw_text_with_outline("Press Y to confirm, N to cancel", love.graphics.getWidth()/2 - 130, love.graphics.getHeight()/2 + 40)
+                                                                                                                                                                end
                                                                                                                                                                                                                                 end
 
                                                                                                                                                                                                                                 function love.update(dt)
@@ -534,6 +607,24 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                             end
 
                                                                                                                                                                                                                                             function love.keypressed(key)
+                                                                                                                                                                if delete_confirmation then
+                                                                                                                                                                    if key == "y" then
+                                                                                                                                                                        if map_to_delete then
+                                                                                                                                                                            delete_map_directory(map_to_delete)
+                                                                                                                                                                            scan_maps()
+                                                                                                                                                                            selected_index = 1
+                                                                                                                                                                            notification = "Map deleted: " .. map_to_delete
+                                                                                                                                                                            notification_timer = 3
+                                                                                                                                                                        end
+                                                                                                                                                                        delete_confirmation = false
+                                                                                                                                                                        map_to_delete = nil
+                                                                                                                                                                    elseif key == "n" or key == "escape" then
+                                                                                                                                                                        delete_confirmation = false
+                                                                                                                                                                        map_to_delete = nil
+                                                                                                                                                                    end
+                                                                                                                                                                    return
+                                                                                                                                                                end
+
                                                                                                                                                                                                                                             if console.keypressed(key) then return end
                                                                                                                                                                                                                                             if mode == "main_menu" then
         if key == "up" or key == "w" then
@@ -562,6 +653,8 @@ if love.filesystem.getInfo(main_menu_background_path) then
             temp_settings.show_bullet_hitboxes = settings.show_bullet_hitboxes
             temp_settings.vsync = settings.vsync
             temp_settings.max_fps = settings.max_fps
+            temp_settings.background_dim = settings.background_dim
+            temp_settings.show_video = settings.show_video
             temp_settings.max_fps_index = settings.max_fps_index
                                                                                                                                                                                                                                                                 elseif choice == "Exit" then
                                                                                                                                                                                                                                                                 love.event.quit()
@@ -584,6 +677,12 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                 selected_index = 1
                                                                                                                                                                                                                                                                 mode = "difficulties"
                                                                                                                                                                                                                                                                 end
+                                                                                                                                                                                                                                                                elseif key == "delete" then
+                                                                                                                                                                                                                                                                    local keys = get_song_list()
+                                                                                                                                                                                                                                                                    if #keys > 0 then
+                                                                                                                                                                                                                                                                        map_to_delete = keys[selected_index]
+                                                                                                                                                                                                                                                                        delete_confirmation = true
+                                                                                                                                                                                                                                                                    end
                                                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 if key == "escape" then
@@ -608,7 +707,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
 
                                                                                                                                                                                                                                                                 -- Загрузка и инициализация игры
                                                                                                                                                                                                                                                                 game = require("game")
-                                                                                                                                                                                                                                game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitbox, settings.show_bullet_hitboxes)
+                                                                                                                                                                                                                                game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitbox, settings.show_bullet_hitboxes, settings.background_dim, settings.show_video)
 
                                                                                                                                                                                                                                                                 mode = "gameplay"
                                                                                                                                                                                                                                                                 end
@@ -620,10 +719,12 @@ if love.filesystem.getInfo(main_menu_background_path) then
 
                                                                                                                                                                                                                                                                 elseif mode == "gameplay" then
                                                                                                                                                                                                                                 if game and game.keypressed then
-                                                                                                                                                                                                                                local action, new_vol = game.keypressed(key)
+                                                                                                                                                                                                                                local action, new_vol, new_dim, new_video = game.keypressed(key)
                                                                                                                                                                                                                                 if action == "exit" then
                                                                                                                                                                                                                                     if new_vol then 
                                                                                                                                                                                                                                         settings.music_volume = new_vol
+                                                                                                                                                                                                                                        if new_dim then settings.background_dim = new_dim end
+                                                                                                                                                                                                                                        if new_video ~= nil then settings.show_video = new_video end
                                                                                                                                                                                                                                         print("[AUDIO] Volume updated from game: " .. new_vol)
                                                                                                                                                                                                                                         save_game_config()
                                                                                                                                                                                                                                     end
@@ -636,9 +737,11 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                 elseif action == "restart" then
                                                                                                                                                                                                                                     if new_vol then 
                                                                                                                                                                                                                                         settings.music_volume = new_vol
+                                                                                                                                                                                                                                        if new_dim then settings.background_dim = new_dim end
+                                                                                                                                                                                                                                        if new_video ~= nil then settings.show_video = new_video end
                                                                                                                                                                                                                                         save_game_config()
                                                                                                                                                                                                                                     end
-                                                                                                                                        game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed)
+                                                                                                                                        game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitbox, settings.show_bullet_hitboxes, settings.background_dim, settings.show_video)
                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
@@ -652,10 +755,12 @@ function love.mousepressed(x, y, button)
     if console.isOpen then return end
     -- Если мы в игре, передаем управление туда
     if mode == "gameplay" and game and game.mousepressed then
-        local action, new_vol = game.mousepressed(x, y, button)
+        local action, new_vol, new_dim, new_video = game.mousepressed(x, y, button)
         if action == "exit" then
             if new_vol then 
                 settings.music_volume = new_vol
+                if new_dim then settings.background_dim = new_dim end
+                if new_video ~= nil then settings.show_video = new_video end
                 save_game_config()
             end
             mode = "main_menu"
@@ -667,9 +772,11 @@ function love.mousepressed(x, y, button)
         elseif action == "restart" then
             if new_vol then 
                 settings.music_volume = new_vol
+                if new_dim then settings.background_dim = new_dim end
+                if new_video ~= nil then settings.show_video = new_video end
                 save_game_config()
             end
-            game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitbox, settings.show_bullet_hitboxes)
+            game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitbox, settings.show_bullet_hitboxes, settings.background_dim, settings.show_video)
         end
         return
     end
@@ -699,6 +806,13 @@ function love.mousepressed(x, y, button)
                         if menu_music then menu_music:setVolume(settings.music_volume) end
                         return -- Прерываем, чтобы не сработало переключение
                     end
+                elseif mode == "settings" and settings_options[i] == "Background Dim" then
+                    local bar_x = 250
+                    local bar_w = 200
+                    if x >= bar_x and x <= bar_x + bar_w then
+                        temp_settings.background_dim = (x - bar_x) / bar_w
+                        return
+                    end
                 end
                 -- Если кликнули по пункту
                 if mode == "settings" then
@@ -718,6 +832,27 @@ function love.mousepressed(x, y, button)
     end
 end
 
+local function ensure_dir(path)
+    love.filesystem.createDirectory(path) -- Создаем в save directory (гарантировано работает)
+    
+    -- Пытаемся создать в папке проекта (для удобства разработки)
+    local cmd
+    if love.system.getOS() == "Windows" then
+        cmd = 'mkdir "' .. path:gsub("/", "\\") .. '" 2>nul'
+    else
+        cmd = 'mkdir -p "' .. path .. '"'
+    end
+    os.execute(cmd)
+end
+
+local function write_file(path, data)
+    -- Пытаемся записать через стандартный IO (в папку проекта)
+    local f = io.open(path, "wb")
+    if f then f:write(data) f:close() return true end
+    -- Если не вышло, пишем через LÖVE (в save directory)
+    return love.filesystem.write(path, data)
+end
+
 function love.filedropped(file)
     local filename = file:getFilename()
     local ext = filename:match("%.([^%.]+)$")
@@ -733,8 +868,8 @@ function love.filedropped(file)
             local map_name = filename:match("([^/\\]+)%.%w+$") or "imported_map"
             local target_dir = "maps/" .. map_name
             
-            if not love.filesystem.getInfo("maps") then love.filesystem.createDirectory("maps") end
-            love.filesystem.createDirectory(target_dir)
+            ensure_dir("maps")
+            ensure_dir(target_dir)
             
             local function copy_dir(src, dst)
                 for _, item in ipairs(love.filesystem.getDirectoryItems(src)) do
@@ -742,11 +877,11 @@ function love.filedropped(file)
                     local dst_path = dst .. "/" .. item
                     local info = love.filesystem.getInfo(src_path)
                     if info.type == "directory" then
-                        love.filesystem.createDirectory(dst_path)
+                        ensure_dir(dst_path)
                         copy_dir(src_path, dst_path)
                     elseif info.type == "file" then
                         local data = love.filesystem.read(src_path)
-                        love.filesystem.write(dst_path, data)
+                        if data then write_file(dst_path, data) end
                     end
                 end
             end
