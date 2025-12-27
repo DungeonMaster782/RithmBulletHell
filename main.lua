@@ -54,6 +54,9 @@ local temp_settings = {}
 local settings_options = {"Music Volume", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "Show Hitbox", "Show Bullet Hitbox", "VSync", "Max FPS", "Apply", "Back"}
 local settings_selected_index = 1
 
+local notification = nil
+local notification_timer = 0
+
 local menu_music = nil
 local menu_music_path = "res/sounds/menu_music.mp3" -- путь к mp3
 
@@ -404,6 +407,12 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                     love.graphics.setColor(1, 1, 1, 1)
 
                                                                                                                                                                     draw_text_with_outline("Main Menu", 50, 50)
+                                                                                                                                                                    
+                                                                                                                                                                    -- Подсказка про импорт
+                                                                                                                                                                    love.graphics.setColor(0.7, 0.7, 0.7, 1)
+                                                                                                                                                                    love.graphics.print("Drag & Drop .osz files to import", 50, love.graphics.getHeight() - 40)
+                                                                                                                                                                    love.graphics.setColor(1, 1, 1, 1)
+
                                                                                                                                                                     for i, item in ipairs(main_menu_items) do
                                                                                                                                                                         local prefix = (i == selected_index) and "> " or "  "
                                                                                                                                                                         local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
@@ -484,6 +493,14 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                     love.graphics.setColor(1, 1, 1, 1)
                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                 console.draw()
+
+                                                                                                                                                                -- Отрисовка уведомлений
+                                                                                                                                                                if notification and notification_timer > 0 then
+                                                                                                                                                                    love.graphics.setColor(0, 0, 0, 0.8)
+                                                                                                                                                                    love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), 40)
+                                                                                                                                                                    love.graphics.setColor(1, 1, 1, 1)
+                                                                                                                                                                    love.graphics.printf(notification, 0, 10, love.graphics.getWidth(), "center")
+                                                                                                                                                                end
                                                                                                                                                                                                                                 end
 
                                                                                                                                                                                                                                 function love.update(dt)
@@ -495,6 +512,11 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                         love.timer.sleep(target - dt)
                                                                                                                                                                                                                                     end
                                                                                                                                                                                                                                 end
+
+                                                                                                                                                                if notification_timer > 0 then
+                                                                                                                                                                    notification_timer = notification_timer - dt
+                                                                                                                                                                end
+
                                                                                                                                                                                                                                 if mode == "gameplay" and game and game.update then
                                                                                                                                                                                                                                     local status = game.update(dt) -- Получаем статус из game.lua
                                                                                                                                                                                                                                     if status == "exit" then
@@ -693,6 +715,55 @@ function love.mousepressed(x, y, button)
                 return
             end
         end
+    end
+end
+
+function love.filedropped(file)
+    local filename = file:getFilename()
+    local ext = filename:match("%.([^%.]+)$")
+    
+    if ext and (ext:lower() == "osz" or ext:lower() == "zip") then
+        notification = "Importing map... Please wait."
+        notification_timer = 5
+        love.draw() -- Принудительно рисуем кадр с уведомлением
+        love.graphics.present()
+        
+        local mount_point = "temp_import_" .. os.time()
+        if love.filesystem.mount(file, mount_point) then
+            local map_name = filename:match("([^/\\]+)%.%w+$") or "imported_map"
+            local target_dir = "maps/" .. map_name
+            
+            if not love.filesystem.getInfo("maps") then love.filesystem.createDirectory("maps") end
+            love.filesystem.createDirectory(target_dir)
+            
+            local function copy_dir(src, dst)
+                for _, item in ipairs(love.filesystem.getDirectoryItems(src)) do
+                    local src_path = src .. "/" .. item
+                    local dst_path = dst .. "/" .. item
+                    local info = love.filesystem.getInfo(src_path)
+                    if info.type == "directory" then
+                        love.filesystem.createDirectory(dst_path)
+                        copy_dir(src_path, dst_path)
+                    elseif info.type == "file" then
+                        local data = love.filesystem.read(src_path)
+                        love.filesystem.write(dst_path, data)
+                    end
+                end
+            end
+            
+            copy_dir(mount_point, target_dir)
+            love.filesystem.unmount(mount_point)
+            
+            scan_maps() -- Обновляем список карт
+            notification = "Successfully imported: " .. map_name
+            notification_timer = 5
+        else
+            notification = "Failed to open archive (corrupted?)"
+            notification_timer = 5
+        end
+    else
+        notification = "Only .osz or .zip files are supported!"
+        notification_timer = 3
     end
 end
 
