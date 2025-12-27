@@ -122,7 +122,7 @@ local function calc_preempt(ar)
 end
 
 -- ======= GAME FUNCTIONS =======
-function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed)
+function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed, show_hitbox, show_bullet_hitboxes)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
     load_config()
     -- Применяем настройки, переданные из меню (они приоритетнее файла)
@@ -175,6 +175,8 @@ function game.load(song, difficulty, initial_lives, controls_mode, bg_image, mus
     player.shotCooldown = 0
     -- *** НОВОЕ: Передаем текущие размеры для правильного центрирования ***
     player.load(love_width, love_height)
+    if show_hitbox ~= nil then player.showHitbox = show_hitbox end
+    if show_bullet_hitboxes ~= nil then bullets.showHitbox = show_bullet_hitboxes end
     player.speed = 200 * (config.player_speed or 1.0) -- Применяем множитель скорости игрока
     if controls_mode then
         player.set_controls_mode(controls_mode)
@@ -263,7 +265,7 @@ function game.update(dt)
                     -- Коллизия с лазером
                     if not player.invuln then
                         local dist = lasers.getDistance(player.x, player.y, translated_x, translated_y, translated_endX, translated_endY)
-                        if dist < (player.radius + 10) then -- 10 - половина ширины лазера
+                        if dist < (player.hitboxRadius + 10) then -- 10 - половина ширины лазера
                             player.hit()
                         end
                     end
@@ -299,7 +301,7 @@ function game.update(dt)
             local dy = b.y - player.y
             local dist = math.sqrt(dx * dx + dy * dy)
 
-            if not player.invuln and dist < (player.radius + b.radius) then
+            if not player.invuln and dist < (player.hitboxRadius + b.radius) then
                 player.hit()
             end
         end
@@ -403,6 +405,7 @@ function game.draw()
     love.graphics.print("Lives: " .. player.lives, 10, 10)
 
     bullets.draw()
+    player.drawHitbox()
 
     -- ОТРИСОВКА МЕНЮ (ПАУЗА / GAME OVER / VICTORY)
     if state ~= "playing" and not settingsOpen then

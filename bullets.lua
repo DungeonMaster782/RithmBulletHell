@@ -1,7 +1,8 @@
 local bullets = {
     list = {},
     texture = nil,
-    glowTexture = nil
+    glowTexture = nil,
+    showHitbox = false
 }
 
 function bullets.load()
@@ -98,11 +99,21 @@ function bullets.draw()
         if bullets.texture then
             local w = bullets.texture:getWidth()
             local h = bullets.texture:getHeight()
-            local scale = (b.radius * 2.5) / w -- Масштабируем картинку чуть больше хитбокса
+            local scale = (b.radius * 2) / w -- Масштабируем картинку ровно под размер хитбокса
             love.graphics.draw(bullets.texture, b.x, b.y, 0, scale, scale, w / 2, h / 2)
         else
             love.graphics.circle("fill", b.x, b.y, b.radius)
         end
+    end
+
+    -- 3. Хитбокс (если включен)
+    if bullets.showHitbox then
+        love.graphics.setColor(1, 0, 0, 0.8)
+        love.graphics.setLineWidth(1)
+        for _, b in ipairs(bullets.list) do
+            love.graphics.circle("line", b.x, b.y, b.radius)
+        end
+        love.graphics.setColor(1, 1, 1, 1)
     end
 end
 

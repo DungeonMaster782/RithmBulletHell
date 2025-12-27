@@ -43,13 +43,15 @@ settings = { -- Глобальная переменная, чтобы консо
     bullet_size = 1.0,
     player_speed = 1.0,
     show_fps = false,
+    show_hitbox = false,
+    show_bullet_hitboxes = false,
     vsync = true,
     max_fps = 0, -- 0 = Unlimited
     max_fps_options = {30, 60, 120, 144, 240, 0},
     max_fps_index = 6
 }
 local temp_settings = {}
-local settings_options = {"Music Volume", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "VSync", "Max FPS", "Apply", "Back"}
+local settings_options = {"Music Volume", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "Show Hitbox", "Show Bullet Hitbox", "VSync", "Max FPS", "Apply", "Back"}
 local settings_selected_index = 1
 
 local menu_music = nil
@@ -99,6 +101,8 @@ local function load_game_config()
             if key == "lives" then settings.lives = n end
             if key == "controls_index" then settings.controls_index = n end
             if key == "show_fps" then settings.show_fps = (value == "true") end
+            if key == "show_hitbox" then settings.show_hitbox = (value == "true") end
+            if key == "show_bullet_hitboxes" then settings.show_bullet_hitboxes = (value == "true") end
             if key == "vsync" then settings.vsync = (value == "true") end
             if key == "max_fps" then 
                 settings.max_fps = n 
@@ -125,6 +129,8 @@ local function save_game_config()
     content = content .. "bullet_size=" .. string.format("%.1f", settings.bullet_size) .. "\n"
     content = content .. "player_speed=" .. string.format("%.1f", settings.player_speed) .. "\n"
     content = content .. "show_fps=" .. tostring(settings.show_fps) .. "\n"
+    content = content .. "show_hitbox=" .. tostring(settings.show_hitbox) .. "\n"
+    content = content .. "show_bullet_hitboxes=" .. tostring(settings.show_bullet_hitboxes) .. "\n"
     content = content .. "vsync=" .. tostring(settings.vsync) .. "\n"
     content = content .. "max_fps=" .. settings.max_fps .. "\n"
     love.filesystem.write("config.txt", content)
@@ -267,6 +273,10 @@ if love.filesystem.getInfo(main_menu_background_path) then
                 value = string.format("%.1f", temp_settings.player_speed)
             elseif option == "Show FPS" then
                 value = temp_settings.show_fps and "On" or "Off"
+            elseif option == "Show Hitbox" then
+                value = temp_settings.show_hitbox and "On" or "Off"
+            elseif option == "Show Bullet Hitbox" then
+                value = temp_settings.show_bullet_hitboxes and "On" or "Off"
             elseif option == "VSync" then
                 value = temp_settings.vsync and "On" or "Off"
             elseif option == "Max FPS" then
@@ -309,6 +319,10 @@ if love.filesystem.getInfo(main_menu_background_path) then
             temp_settings.player_speed = math.max(0.1, temp_settings.player_speed - 0.1)
         elseif settings_options[settings_selected_index] == "Show FPS" then
             temp_settings.show_fps = not temp_settings.show_fps
+        elseif settings_options[settings_selected_index] == "Show Hitbox" then
+            temp_settings.show_hitbox = not temp_settings.show_hitbox
+        elseif settings_options[settings_selected_index] == "Show Bullet Hitbox" then
+            temp_settings.show_bullet_hitboxes = not temp_settings.show_bullet_hitboxes
         elseif settings_options[settings_selected_index] == "VSync" then
             temp_settings.vsync = not temp_settings.vsync
         elseif settings_options[settings_selected_index] == "Max FPS" then
@@ -338,6 +352,10 @@ if love.filesystem.getInfo(main_menu_background_path) then
             temp_settings.player_speed = temp_settings.player_speed + 0.1
         elseif settings_options[settings_selected_index] == "Show FPS" then
             temp_settings.show_fps = not temp_settings.show_fps
+        elseif settings_options[settings_selected_index] == "Show Hitbox" then
+            temp_settings.show_hitbox = not temp_settings.show_hitbox
+        elseif settings_options[settings_selected_index] == "Show Bullet Hitbox" then
+            temp_settings.show_bullet_hitboxes = not temp_settings.show_bullet_hitboxes
         elseif settings_options[settings_selected_index] == "VSync" then
             temp_settings.vsync = not temp_settings.vsync
         elseif settings_options[settings_selected_index] == "Max FPS" then
@@ -356,6 +374,8 @@ if love.filesystem.getInfo(main_menu_background_path) then
             settings.bullet_size = temp_settings.bullet_size
             settings.player_speed = temp_settings.player_speed
             settings.show_fps = temp_settings.show_fps
+            settings.show_hitbox = temp_settings.show_hitbox
+            settings.show_bullet_hitboxes = temp_settings.show_bullet_hitboxes
             settings.vsync = temp_settings.vsync
             settings.max_fps = temp_settings.max_fps
             settings.max_fps_index = temp_settings.max_fps_index
@@ -486,7 +506,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                             end
                                                                                                                                                                                                                                     elseif status == "restart" then
                                                                                                                                                                                                                                         -- Перезапуск с теми же параметрами
-                                                                                                                                                                                                                                        game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed)
+                                                                                                                                                                                                                                        game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitbox, settings.show_bullet_hitboxes)
                                                                                                                                                                                                                                             end
                                                                                                                                                                                                                                             end
                                                                                                                                                                                                                                             end
@@ -516,6 +536,8 @@ if love.filesystem.getInfo(main_menu_background_path) then
             temp_settings.bullet_size = settings.bullet_size
             temp_settings.player_speed = settings.player_speed
             temp_settings.show_fps = settings.show_fps
+            temp_settings.show_hitbox = settings.show_hitbox
+            temp_settings.show_bullet_hitboxes = settings.show_bullet_hitboxes
             temp_settings.vsync = settings.vsync
             temp_settings.max_fps = settings.max_fps
             temp_settings.max_fps_index = settings.max_fps_index
@@ -564,7 +586,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
 
                                                                                                                                                                                                                                                                 -- Загрузка и инициализация игры
                                                                                                                                                                                                                                                                 game = require("game")
-                                                                                                                                                                                                                                game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed)
+                                                                                                                                                                                                                                game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitbox, settings.show_bullet_hitboxes)
 
                                                                                                                                                                                                                                                                 mode = "gameplay"
                                                                                                                                                                                                                                                                 end
@@ -625,7 +647,7 @@ function love.mousepressed(x, y, button)
                 settings.music_volume = new_vol
                 save_game_config()
             end
-            game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed)
+            game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitbox, settings.show_bullet_hitboxes)
         end
         return
     end

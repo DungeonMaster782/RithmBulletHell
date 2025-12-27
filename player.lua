@@ -2,8 +2,19 @@ local player = {
     x = 400,
     y = 300,
     radius = 16,
+    hitboxRadius = 6,
+    showHitbox = false,
     speed = 200,
     texture = nil,
+    visualX = 400,
+    visualY = 300,
+    focusTexture = nil,
+    focusTexture2 = nil,
+    focusRotation = 0,
+    focusRotation2 = 0,
+    focusAnimTime = 0,
+    focusActive = false,
+    hitboxTexture = nil,
     lives = 3,
     invuln = false,
     invuln_timer = 0,
@@ -60,26 +71,71 @@ end
 function player.load(screenWidth, screenHeight)
     load_controls_from_properties()
     player.texture = love.graphics.newImage("res/images/player.png")
+    if love.filesystem.getInfo("res/images/focus.png") then
+        player.focusTexture = love.graphics.newImage("res/images/focus.png")
+    end
+    if love.filesystem.getInfo("res/images/focus2.png") then
+        player.focusTexture2 = love.graphics.newImage("res/images/focus2.png")
+    elseif player.focusTexture then
+        player.focusTexture2 = player.focusTexture
+    end
+    if love.filesystem.getInfo("res/images/player_hitbox.png") then
+        player.hitboxTexture = love.graphics.newImage("res/images/player_hitbox.png")
+        player.hitboxTexture:setFilter("nearest", "nearest") -- Сохраняем четкость пикселей
+    end
     if screenWidth and screenHeight then
         player.x = screenWidth / 2
         player.y = screenHeight / 2
+        player.visualX = player.x
+        player.visualY = player.y
         player.screenWidth = screenWidth
         player.screenHeight = screenHeight
     end
 end
 
 function player.update(dt)
+    local shiftDown = love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")
+
+    -- Логика анимации фокуса
+    if shiftDown then
+        if not player.focusActive then
+            player.focusActive = true
+            player.focusAnimTime = 0
+            player.focusRotation = 0
+            player.focusRotation2 = 0
+        end
+        player.focusAnimTime = player.focusAnimTime + dt
+        
+        -- Начинаем крутить только после завершения анимации появления (0.2 сек)
+        if player.focusAnimTime > 0.2 then
+            player.focusRotation = player.focusRotation - dt * 4
+            player.focusRotation2 = player.focusRotation2 + dt * 4
+        end
+    else
+        player.focusActive = false
+        player.focusAnimTime = 0
+    end
+
     -- Движение
-    if love.keyboard.isDown(player.controls.up) then player.y = player.y - player.speed * dt end
-    if love.keyboard.isDown(player.controls.down) then player.y = player.y + player.speed * dt end
-    if love.keyboard.isDown(player.controls.left) then player.x = player.x - player.speed * dt end
-    if love.keyboard.isDown(player.controls.right) then player.x = player.x + player.speed * dt end
+    local currentSpeed = player.speed
+    if shiftDown then
+        currentSpeed = currentSpeed * 0.5
+    end
+
+    if love.keyboard.isDown(player.controls.up) then player.y = player.y - currentSpeed * dt end
+    if love.keyboard.isDown(player.controls.down) then player.y = player.y + currentSpeed * dt end
+    if love.keyboard.isDown(player.controls.left) then player.x = player.x - currentSpeed * dt end
+    if love.keyboard.isDown(player.controls.right) then player.x = player.x + currentSpeed * dt end
 
     -- Ограничение выхода за границы экрана
     if player.screenWidth and player.screenHeight then
         player.x = math.max(player.radius, math.min(player.screenWidth - player.radius, player.x))
         player.y = math.max(player.radius, math.min(player.screenHeight - player.radius, player.y))
     end
+
+    -- Плавное движение текстуры (Lerp) для визуального эффекта инерции
+    player.visualX = player.visualX + (player.x - player.visualX) * 30 * dt
+    player.visualY = player.visualY + (player.y - player.visualY) * 30 * dt
 
     -- Обновляем таймер неуязвимости
     if player.invuln then
@@ -112,10 +168,32 @@ function player.draw()
 
     if player.texture then
         love.graphics.setColor(1, 1, 1)
-        love.graphics.draw(player.texture, player.x - player.radius, player.y - player.radius)
+        local w = player.texture:getWidth()
+        local h = player.texture:getHeight()
+        love.graphics.draw(player.texture, player.visualX, player.visualY, 0, 1, 1, w / 2, h / 2)
     else
         love.graphics.setColor(1, 1, 1)
-        love.graphics.circle("fill", player.x, player.y, player.radius)
+        love.graphics.circle("fill", player.visualX, player.visualY, player.radius)
+    end
+
+    -- Рисуем текстуру фокуса (если зажат Shift)
+    if player.focusActive and player.focusTexture then
+        -- Вычисляем масштаб: от 1.5 до 1.0 за 0.2 секунды
+        local scale = 1
+        if player.focusAnimTime < 0.2 then
+            scale = 1.5 - (0.5 * (player.focusAnimTime / 0.2))
+        end
+
+        local w = player.focusTexture:getWidth()
+        local h = player.focusTexture:getHeight()
+        love.graphics.setColor(1, 1, 1, 0.9)
+        love.graphics.draw(player.focusTexture, player.visualX, player.visualY, player.focusRotation, scale, scale, w / 2, h / 2)
+        
+        if player.focusTexture2 then
+            local w2 = player.focusTexture2:getWidth()
+            local h2 = player.focusTexture2:getHeight()
+            love.graphics.draw(player.focusTexture2, player.visualX, player.visualY, player.focusRotation2, scale, scale, w2 / 2, h2 / 2)
+        end
     end
 
     -- Рисуем пули
@@ -126,6 +204,36 @@ function player.draw()
     end
     love.graphics.setBlendMode("alpha")
     love.graphics.setColor(1, 1, 1)
+end
+
+function player.drawHitbox()
+    -- Мигаем, если инвулн (так же как и сам игрок)
+    if player.invuln and math.floor(love.timer.getTime() * 10) % 2 == 0 then
+        return
+    end
+
+    if player.hitboxTexture then
+        love.graphics.setColor(1, 1, 1, 1)
+        local w = player.hitboxTexture:getWidth()
+        local h = player.hitboxTexture:getHeight()
+        -- Масштабируем текстуру так, чтобы она соответствовала размеру хитбокса (диаметр = 2 * radius)
+        -- Множитель 8 увеличивает визуальный размер текстуры, так как она казалась слишком маленькой
+        local scale = (player.hitboxRadius * 26) / w
+        love.graphics.draw(player.hitboxTexture, player.x, player.y, -player.focusRotation, scale, scale, w / 2, h / 2)
+    else
+        love.graphics.setColor(1, 0, 0, 1)
+        local r = player.hitboxRadius
+        love.graphics.polygon("fill", player.x, player.y - r, player.x + r, player.y, player.x, player.y + r, player.x - r, player.y)
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
+    -- Рисуем красную обводку реального радиуса хитбокса
+    if player.showHitbox then
+        love.graphics.setColor(1, 0, 0, 1)
+        love.graphics.setLineWidth(1)
+        love.graphics.circle("line", player.x, player.y, player.hitboxRadius)
+        love.graphics.setColor(1, 1, 1, 1)
+    end
 end
 
 function player.shoot()
