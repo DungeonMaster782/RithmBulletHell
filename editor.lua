@@ -24,8 +24,12 @@ function editor.load(folder_name)
     if love.filesystem.getInfo(dir .. "/map.lua") then
         local chunk = love.filesystem.load(dir .. "/map.lua")
         if chunk then
-            local data = chunk()
-            objects = data.objects or {}
+            local ok, data = pcall(chunk)
+            if ok and data then
+                objects = data.objects or {}
+            else
+                print("Error loading map data: " .. tostring(data))
+            end
         end
     end
     
@@ -40,10 +44,15 @@ function editor.loadMusic(dir)
     for _, ext in ipairs(exts) do
         local path = dir .. "/audio." .. ext
         if love.filesystem.getInfo(path) then
-            music = love.audio.newSource(path, "stream")
-            duration = music:getDuration()
-            editor.notify("Music loaded: audio." .. ext)
-            return
+            local ok, src = pcall(love.audio.newSource, path, "stream")
+            if ok then
+                music = src
+                duration = music:getDuration()
+                editor.notify("Music loaded: audio." .. ext)
+                return
+            else
+                print("Failed to load audio source: " .. path)
+            end
         end
     end
     editor.notify("No audio found. Drop MP3/OGG here!")
@@ -157,7 +166,13 @@ function editor.filedropped(file)
     if ext then ext = ext:lower() end
     
     if ext == "mp3" or ext == "ogg" or ext == "wav" then
+        local ok, err = file:open("r")
+        if not ok then
+            editor.notify("Open failed: " .. tostring(err))
+            return
+        end
         local data = file:read()
+        file:close()
         if not data then
             editor.notify("Failed to read file")
             return

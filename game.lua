@@ -345,7 +345,7 @@ function game.update(dt)
 
     -- Запуск видео с задержкой (если videoOffset > 0)
     if backgroundVideo and not backgroundVideo:isPlaying() and showVideo and state == "playing" then
-        if videoOffset > 0 and currentTime >= videoOffset then
+        if currentTime >= videoOffset then
              backgroundVideo:play()
         end
     end

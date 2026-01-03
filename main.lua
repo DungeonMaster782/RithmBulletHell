@@ -1052,7 +1052,7 @@ function love.filedropped(file)
         love.draw() -- Принудительно рисуем кадр с уведомлением
         love.graphics.present()
         
-        local mount_point = "temp_import_" .. os.time()
+        local mount_point = "temp_import_" .. tostring(love.timer.getTime()):gsub("%.", "")
         if love.filesystem.mount(file, mount_point) then
             local map_name = filename:match("([^/\\]+)%.%w+$") or "imported_map"
             local target_dir = "maps/" .. map_name
