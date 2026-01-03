@@ -609,6 +609,34 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                 draw_text_with_outline("Game started: " .. (selected_song or "") .. " - " .. (selected_difficulty or ""), 50, 50)
                                                                                                                                                                                                                                 draw_text_with_outline("Press ESC to return to menu", 50, 80)
                                                                                                                                                                                                                                 end
+    elseif mode == "custom_select" then
+        draw_text_with_outline("Select Custom Map:", 50, 50)
+        if #custom_maps == 0 then
+            draw_text_with_outline("No maps in Mmaps folder!", 70, 80, {1, 0, 0, 1})
+        else
+            for i, map in ipairs(custom_maps) do
+                local prefix = (i == selected_index) and "> " or "  "
+                local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
+                draw_text_with_outline(prefix .. map, 70, 80 + i * 30, color)
+            end
+        end
+    elseif mode == "editor_select" then
+        draw_text_with_outline("Editor - Select Map:", 50, 50)
+        local prefix = (selected_index == 1) and "> " or "  "
+        local color = (selected_index == 1) and {0, 1, 0, 1} or {1, 1, 1, 1}
+        draw_text_with_outline(prefix .. "[Create New Map]", 70, 80, color)
+        
+        for i, map in ipairs(custom_maps) do
+            local idx = i + 1
+            prefix = (idx == selected_index) and "> " or "  "
+            color = (idx == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
+            draw_text_with_outline(prefix .. map, 70, 80 + idx * 30, color)
+        end
+    elseif mode == "editor" then
+        editor.draw()
+    elseif mode == "editor_name_input" then
+        draw_text_with_outline("Enter New Map Name:", 50, 50)
+        draw_text_with_outline(new_map_name .. "_", 50, 80, {1, 1, 0, 1})
                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                 -- Отрисовка FPS (теперь внутри love.draw)
                                                                                                                                                                                                                                 if settings.show_fps then
@@ -672,6 +700,10 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                         game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitboxes, settings.background_dim, settings.show_video)
                                                                                                                                                                                                                                             end
                                                                                                                                                                                                                                             end
+    
+    if mode == "editor" then
+        editor.update(dt)
+    end
                                                                                                                                                                                                                                             end
 
                                                                                                                                                                                                                                             function love.keypressed(key)
@@ -802,9 +834,23 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                     elseif key == "escape" then
                                                                                                                                                                                                                                                                         mode = "editor_select"
                                                                                                                                                                                                                                                                     elseif key == "backspace" then
-                                                                                                                                                                                                                                                                        local byteoffset = love.utf8.offset(new_map_name, -1)
+                                                                                                                                                                                                                                                                       local byteoffset = nil
+                                                                                                                                                                                                                                                                       if love.utf8 then
+                                                                                                                                                                                                                                                                           local status, offset = pcall(love.utf8.offset, new_map_name, -1)
+                                                                                                                                                                                                                                                                           if status then byteoffset = offset end
+                                                                                                                                                                                                                                                                       end
+                                                                                                                                                                                                                                                                       
                                                                                                                                                                                                                                                                         if byteoffset then
                                                                                                                                                                                                                                                                             new_map_name = string.sub(new_map_name, 1, byteoffset - 1)
+                                                                                                                                                                                                                                                                       else
+                                                                                                                                                                                                                                                                           local len = #new_map_name
+                                                                                                                                                                                                                                                                           if len > 0 then
+                                                                                                                                                                                                                                                                               local i = len
+                                                                                                                                                                                                                                                                               while i > 1 and (string.byte(new_map_name, i) >= 128 and string.byte(new_map_name, i) <= 191) do
+                                                                                                                                                                                                                                                                                   i = i - 1
+                                                                                                                                                                                                                                                                               end
+                                                                                                                                                                                                                                                                               new_map_name = string.sub(new_map_name, 1, i - 1)
+                                                                                                                                                                                                                                                                           end
                                                                                                                                                                                                                                                                         end
                                                                                                                                                                                                                                                                     end
 
@@ -839,8 +885,8 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                             new_map_name = ""
                                                                                                                                                                                                                                                                         else
                                                                                                                                                                                                                                                                             editor.load(custom_maps[selected_index - 1])
+                                                                                                                                                                                                                                                                           mode = "editor"
                                                                                                                                                                                                                                                                         end
-                                                                                                                                                                                                                                                                        mode = "editor"
                                                                                                                                                                                                                                                                     end
                                                                                                                                                                                                                                                                     if key == "escape" then
                                                                                                                                                                                                                                                                         mode = "main_menu"
@@ -1088,6 +1134,12 @@ function love.filedropped(file)
     else
         notification = "Only .osz or .zip files are supported!"
         notification_timer = 3
+    end
+end
+
+function love.wheelmoved(x, y)
+    if mode == "editor" then
+        editor.wheelmoved(x, y)
     end
 end
 

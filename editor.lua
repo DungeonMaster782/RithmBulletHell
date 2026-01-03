@@ -7,6 +7,23 @@ local music = nil
 local currentTime = 0
 local duration = 10 -- Default duration
 local isPlaying = false
+local waitingForAudio = false
+local gridSize = 32 -- Размер сетки
+local playbackSpeed = 1.0 -- Скорость воспроизведения
+
+-- Helper for directory creation (local + save dir)
+local function ensure_dir(path)
+    if not love.filesystem.getInfo(path) then
+        love.filesystem.createDirectory(path)
+    end
+    local cmd
+    if love.system.getOS() == "Windows" then
+        cmd = 'mkdir "' .. path:gsub("/", "\\") .. '" 2>nul'
+    else
+        cmd = 'mkdir -p "' .. path .. '"'
+    end
+    os.execute(cmd)
+end
 
 function editor.load(folder_name)
     objects = {}
@@ -14,11 +31,11 @@ function editor.load(folder_name)
     currentTime = 0
     isPlaying = false
     music = nil
+    waitingForAudio = false
+    playbackSpeed = 1.0
     
     local dir = "Mmaps/" .. folder_name
-    if not love.filesystem.getInfo(dir) then
-        love.filesystem.createDirectory(dir)
-    end
+    ensure_dir(dir)
     
     -- Загрузка данных карты
     if love.filesystem.getInfo(dir .. "/map.lua") then
@@ -36,22 +53,46 @@ function editor.load(folder_name)
     -- Попытка загрузить музыку
     editor.loadMusic(dir)
     
-    editor.notify("Editing: " .. map_name)
+    if not music then
+        waitingForAudio = true
+        editor.notify("Map created! Drop Audio File to start.")
+    else
+        editor.notify("Editing: " .. map_name)
+    end
 end
 
 function editor.loadMusic(dir)
     local exts = {"mp3", "ogg", "wav"}
     for _, ext in ipairs(exts) do
-        local path = dir .. "/audio." .. ext
+        local filename = "audio." .. ext
+        local path = dir .. "/" .. filename
+        
         if love.filesystem.getInfo(path) then
             local ok, src = pcall(love.audio.newSource, path, "stream")
             if ok then
                 music = src
                 duration = music:getDuration()
-                editor.notify("Music loaded: audio." .. ext)
+                editor.notify("Music loaded: " .. filename)
                 return
             else
                 print("Failed to load audio source: " .. path)
+            end
+        end
+        
+        -- Fallback: Try loading via io (if file is in game folder but hidden from love.filesystem)
+        local f = io.open(path, "rb")
+        if f then
+            local data = f:read("*all")
+            f:close()
+            if data then
+                local fileData = love.filesystem.newFileData(data, filename)
+                local ok, src = pcall(love.audio.newSource, fileData, "stream")
+                if ok then
+                    music = src
+                    duration = music:getDuration()
+                    editor.notify("Music loaded (local): " .. filename)
+                    return
+                end
             end
         end
     end
@@ -76,25 +117,74 @@ function editor.update(dt)
             music:stop()
         end
     elseif isPlaying then
-        currentTime = currentTime + dt
+        currentTime = currentTime + dt * playbackSpeed
     end
 end
 
 function editor.draw()
+    if waitingForAudio then
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.print("EDITOR: " .. map_name, 10, 10)
+        love.graphics.printf("STEP 2: DRAG & DROP AUDIO FILE (MP3/OGG) HERE", 0, love.graphics.getHeight() * 0.4, love.graphics.getWidth(), "center")
+        love.graphics.printf("Folder created at: Mmaps/" .. map_name, 0, love.graphics.getHeight() * 0.5, love.graphics.getWidth(), "center")
+        if notification_timer > 0 then
+            love.graphics.setColor(0, 1, 0, 1)
+            love.graphics.print(notification, 10, love.graphics.getHeight() - 30)
+        end
+        return
+    end
+    
+    local w = love.graphics.getWidth()
+    local h = love.graphics.getHeight()
+
+    -- 1. Рисуем сетку (Grid)
+    love.graphics.setColor(1, 1, 1, 0.1)
+    love.graphics.setLineWidth(1)
+    for x = 0, w, gridSize do
+        love.graphics.line(x, 0, x, h)
+    end
+    for y = 0, h, gridSize do
+        love.graphics.line(0, y, w, y)
+    end
+
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("EDITOR: " .. map_name, 10, 10)
     love.graphics.print("Time: " .. string.format("%.2f", currentTime) .. " / " .. string.format("%.2f", duration), 10, 30)
-    love.graphics.print("[Space] Play/Pause | [Arrows] Seek | [LMB] Place | [S] Save | [ESC] Exit", 10, 50)
+    love.graphics.print("[Space] Play | [+/-] Speed (" .. playbackSpeed .. "x) | [G] Grid (" .. gridSize .. ") | [RMB] Delete", 10, 50)
     
     -- Отрисовка объектов
+    local preempt = 1.2 -- Время появления (как AR в osu)
+    
     for i, obj in ipairs(objects) do
-        -- Подсвечиваем объекты, которые рядом по времени (в пределах 1 сек)
-        local alpha = math.max(0.2, 1 - math.abs(obj.time - currentTime))
-        love.graphics.setColor(1, 0, 0, alpha)
-        love.graphics.circle("line", obj.x, obj.y, 15)
-        love.graphics.print(string.format("%.1f", obj.time), obj.x - 10, obj.y - 20)
+        local dt = obj.time - currentTime
+        
+        -- Показываем объекты, которые скоро появятся или только что исчезли
+        if dt > -0.2 and dt <= preempt then
+            -- Прозрачность зависит от времени
+            local alpha = 1
+            if dt < 0 then alpha = 1 - (math.abs(dt) / 0.2) end -- Исчезает после удара
+            
+            love.graphics.setColor(1, 1, 1, alpha)
+            
+            -- Круг объекта (Hit Circle)
+            love.graphics.setLineWidth(2)
+            love.graphics.circle("line", obj.x, obj.y, 30)
+            love.graphics.print(i, obj.x - 5, obj.y - 10)
+            
+            -- Круг приближения (Approach Circle)
+            if dt > 0 then
+                local approachScale = 1 + (dt / preempt) * 2 -- От 3x до 1x
+                love.graphics.setColor(0.5, 1, 0.5, alpha * 0.8)
+                love.graphics.circle("line", obj.x, obj.y, 30 * approachScale)
+            else
+                -- Эффект "удара" (вспышка)
+                love.graphics.setColor(1, 1, 0.5, alpha)
+                love.graphics.circle("fill", obj.x, obj.y, 32)
+            end
+        end
     end
 
+    love.graphics.setColor(1, 1, 1, 1)
     -- Уведомление
     if notification_timer > 0 then
         love.graphics.setColor(0, 1, 0, 1)
@@ -102,29 +192,87 @@ function editor.draw()
     end
     
     -- Таймлайн бар
-    local w = love.graphics.getWidth()
-    local h = love.graphics.getHeight()
-    love.graphics.setColor(0.5, 0.5, 0.5, 1)
-    love.graphics.rectangle("fill", 0, h - 10, w, 10)
-    love.graphics.setColor(1, 0, 0, 1)
-    love.graphics.rectangle("fill", 0, h - 10, (currentTime / duration) * w, 10)
+    local barHeight = 30
+    
+    love.graphics.setColor(0.3, 0.3, 0.3, 1)
+    love.graphics.rectangle("fill", 0, h - barHeight, w, barHeight)
+    
+    if duration > 0 then
+        love.graphics.setColor(1, 0, 0, 1)
+        love.graphics.rectangle("fill", 0, h - barHeight, (currentTime / duration) * w, barHeight)
+        -- Индикатор курсора
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.rectangle("fill", (currentTime / duration) * w - 2, h - barHeight, 4, barHeight)
+        
+        -- Рисуем засечки объектов на таймлайне
+        love.graphics.setColor(1, 1, 0, 0.7)
+        for _, obj in ipairs(objects) do
+            love.graphics.rectangle("fill", (obj.time / duration) * w, h - barHeight, 2, barHeight)
+        end
+    end
 end
 
 function editor.mousepressed(x, y, button)
+    if waitingForAudio then return end
+    
+    local h = love.graphics.getHeight()
+    local barHeight = 30
+    
+    -- Клик по таймлайну
+    if y >= h - barHeight then
+        if button == 1 and duration > 0 then
+            local progress = x / love.graphics.getWidth()
+            currentTime = math.max(0, math.min(duration, progress * duration))
+            if music then music:seek(currentTime) end
+        end
+        return
+    end
+
+    -- Прилипание к сетке (Snapping)
+    local snapX = math.floor(x / gridSize + 0.5) * gridSize
+    local snapY = math.floor(y / gridSize + 0.5) * gridSize
+
     if button == 1 then
         -- Добавляем объект с текущим временем
         table.insert(objects, {
-            x = x, 
-            y = y, 
-            time = currentTime, 
+            x = snapX, 
+            y = snapY, 
+            time = currentTime,
             type = "circle"
         })
         editor.notify("Placed object at " .. string.format("%.2f", currentTime) .. "s")
     elseif button == 2 then
-        if #objects > 0 then
-            table.remove(objects)
+        -- Умное удаление: ищем объект под курсором
+        local closestIndex = nil
+        local minDist = 40 -- Радиус поиска (чуть больше радиуса круга)
+        
+        for i, obj in ipairs(objects) do
+            local dx = obj.x - x
+            local dy = obj.y - y
+            local dist = math.sqrt(dx*dx + dy*dy)
+            if dist < minDist then
+                minDist = dist
+                closestIndex = i
+            end
+        end
+        
+        if closestIndex then
+            table.remove(objects, closestIndex)
+            editor.notify("Deleted object")
         end
     end
+end
+
+function editor.wheelmoved(x, y)
+    if waitingForAudio then return end
+    
+    local seekAmount = 0.5 -- По умолчанию 0.5 сек
+    if love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift") then
+        seekAmount = 0.05 -- Точная настройка с Shift
+    end
+    
+    currentTime = math.max(0, math.min(duration, currentTime + (y * seekAmount)))
+    if music then music:seek(currentTime) end
 end
 
 function editor.keypressed(key)
@@ -144,6 +292,19 @@ function editor.keypressed(key)
     elseif key == "right" then
         currentTime = math.min(duration, currentTime + 1)
         if music then music:seek(currentTime) end
+    elseif key == "-" or key == "kp-" then
+        playbackSpeed = math.max(0.25, playbackSpeed - 0.25)
+        if music then music:setPitch(playbackSpeed) end
+        editor.notify("Speed: " .. playbackSpeed .. "x")
+    elseif key == "=" or key == "kp+" then
+        playbackSpeed = math.min(2.0, playbackSpeed + 0.25)
+        if music then music:setPitch(playbackSpeed) end
+        editor.notify("Speed: " .. playbackSpeed .. "x")
+    elseif key == "g" then
+        if gridSize == 32 then gridSize = 16
+        elseif gridSize == 16 then gridSize = 8
+        else gridSize = 32 end
+        editor.notify("Grid size: " .. gridSize)
     end
 end
 
@@ -156,6 +317,14 @@ function editor.save()
     
     local path = "Mmaps/" .. map_name .. "/map.lua"
     love.filesystem.write(path, str)
+    
+    -- Дублируем сохранение в локальную папку игры (через io), чтобы файлы были доступны пользователю
+    local f = io.open(path, "w")
+    if f then
+        f:write(str)
+        f:close()
+    end
+    
     editor.notify("Saved to " .. path)
     print("Saved map to " .. path)
 end
@@ -181,9 +350,21 @@ function editor.filedropped(file)
         local target = "Mmaps/" .. map_name .. "/audio." .. ext
         love.filesystem.write(target, data)
         
+        -- Дублируем аудио в локальную папку
+        local f = io.open(target, "wb")
+        if f then
+            f:write(data)
+            f:close()
+        end
+        
         -- Перезагружаем музыку
         if music then music:stop() end
         editor.loadMusic("Mmaps/" .. map_name)
+        
+        -- Принудительно выходим из режима ожидания, если файл записан
+        if music or love.filesystem.getInfo(target) then 
+            waitingForAudio = false 
+        end
         editor.notify("Imported audio: " .. filename)
     else
         editor.notify("Only MP3/OGG/WAV supported!")
