@@ -53,9 +53,10 @@ settings = { -- Глобальная переменная, чтобы консо
     max_fps_index = 6
 }
 local temp_settings = {}
-local settings_options = {"Music Volume", "Background Dim", "Show Video", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "Show Hitbox", "Show Bullet Hitbox", "VSync", "Max FPS", "Apply", "Back"}
+local settings_options = {"Music Volume", "Background Dim", "Show Video", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "Show Hitbox", "Show Bullet Hitbox", "VSync", "Max FPS", "Save", "Back"}
 local settings_selected_index = 1
 
+local next_time = 0
 local notification = nil
 local notification_timer = 0
 local delete_confirmation = false
@@ -85,7 +86,7 @@ local function apply_video_settings()
         flags.borderless = false
     end
 
-    print("[VIDEO] Applying settings: " .. r[1] .. "x" .. r[2] .. " (" .. fs_mode .. ")")
+    print("[VIDEO] Applying settings: " .. r[1] .. "x" .. r[2] .. " (" .. fs_mode .. ") VSync: " .. tostring(settings.vsync))
     love.window.setMode(r[1], r[2], flags)
 end
 
@@ -185,6 +186,7 @@ print("[MAIN] Game starting...")
 font = love.graphics.newFont(18)
 love.graphics.setFont(font)
 
+next_time = love.timer.getTime()
 -- Сначала загружаем конфиг, чтобы применить настройки (громкость, разрешение)
 load_game_config()
 
@@ -347,107 +349,148 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                             -- Функция для обработки клавиш в меню настроек
                                                                                             function handle_settings_key(key)
                                                                                             if key == "up" then
-        settings_selected_index = math.max(1, settings_selected_index - 1)
+        settings_selected_index = settings_selected_index - 1
+        if settings_selected_index < 1 then settings_selected_index = #settings_options end
                                                                                                 elseif key == "down" then
-        settings_selected_index = math.min(#settings_options, settings_selected_index + 1)
+        settings_selected_index = settings_selected_index + 1
+        if settings_selected_index > #settings_options then settings_selected_index = 1 end
                                                                                                     elseif key == "left" then
                                                                                                         if settings_options[settings_selected_index] == "Music Volume" then
-            temp_settings.music_volume = math.max(0, temp_settings.music_volume - 0.05)
-            settings.music_volume = temp_settings.music_volume
+            temp_settings.music_volume = temp_settings.music_volume - 0.05
+            if temp_settings.music_volume < 0 then temp_settings.music_volume = 1.0 end
+            settings.music_volume = temp_settings.music_volume -- Применяем сразу
             if menu_music then menu_music:setVolume(settings.music_volume) end
                                                                                                             elseif settings_options[settings_selected_index] == "Background Dim" then
-            temp_settings.background_dim = math.max(0, temp_settings.background_dim - 0.05)
+            temp_settings.background_dim = temp_settings.background_dim - 0.05
+            if temp_settings.background_dim < 0 then temp_settings.background_dim = 1.0 end
+            settings.background_dim = temp_settings.background_dim -- Применяем сразу
                                                                                                             elseif settings_options[settings_selected_index] == "Show Video" then
             temp_settings.show_video = not temp_settings.show_video
+            settings.show_video = temp_settings.show_video -- Применяем сразу
                                                                                                             elseif settings_options[settings_selected_index] == "Resolution" then
-            temp_settings.resolution_index = math.max(1, temp_settings.resolution_index - 1)
+            temp_settings.resolution_index = temp_settings.resolution_index - 1
+            if temp_settings.resolution_index < 1 then temp_settings.resolution_index = #settings.resolutions end
                                                                                                                 elseif settings_options[settings_selected_index] == "Window Mode" then
-            temp_settings.fullscreen_mode_index = math.max(1, temp_settings.fullscreen_mode_index - 1)
+            temp_settings.fullscreen_mode_index = temp_settings.fullscreen_mode_index - 1
+            if temp_settings.fullscreen_mode_index < 1 then temp_settings.fullscreen_mode_index = #settings.fullscreen_modes end
                                                                                                                     elseif settings_options[settings_selected_index] == "Lives" then
-            temp_settings.lives = math.max(1, temp_settings.lives - 1)
+            temp_settings.lives = temp_settings.lives - 1
+            if temp_settings.lives < 1 then temp_settings.lives = 10 end
+            settings.lives = temp_settings.lives -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Controls" then
-            temp_settings.controls_index = math.max(1, temp_settings.controls_index - 1)
+            temp_settings.controls_index = temp_settings.controls_index - 1
+            if temp_settings.controls_index < 1 then temp_settings.controls_index = #settings.controls_modes end
+            settings.controls_index = temp_settings.controls_index -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Bullet Multiplier" then
             temp_settings.bullet_multiplier = math.max(0.1, temp_settings.bullet_multiplier - 0.1)
+            settings.bullet_multiplier = temp_settings.bullet_multiplier -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Bullet Speed" then
             temp_settings.bullet_speed = math.max(0.1, temp_settings.bullet_speed - 0.1)
+            settings.bullet_speed = temp_settings.bullet_speed -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Bullet Size" then
             temp_settings.bullet_size = math.max(0.1, temp_settings.bullet_size - 0.1)
+            settings.bullet_size = temp_settings.bullet_size -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Player Speed" then
             temp_settings.player_speed = math.max(0.1, temp_settings.player_speed - 0.1)
+            settings.player_speed = temp_settings.player_speed -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Show FPS" then
             temp_settings.show_fps = not temp_settings.show_fps
+            settings.show_fps = temp_settings.show_fps -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Show Hitbox" then
             temp_settings.show_hitbox = not temp_settings.show_hitbox
+            settings.show_hitbox = temp_settings.show_hitbox -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Show Bullet Hitbox" then
             temp_settings.show_bullet_hitboxes = not temp_settings.show_bullet_hitboxes
+            settings.show_bullet_hitboxes = temp_settings.show_bullet_hitboxes -- Применяем сразу
         elseif settings_options[settings_selected_index] == "VSync" then
             temp_settings.vsync = not temp_settings.vsync
         elseif settings_options[settings_selected_index] == "Max FPS" then
-            temp_settings.max_fps_index = math.max(1, temp_settings.max_fps_index - 1)
+            temp_settings.max_fps_index = temp_settings.max_fps_index - 1
+            if temp_settings.max_fps_index < 1 then temp_settings.max_fps_index = #settings.max_fps_options end
             temp_settings.max_fps = settings.max_fps_options[temp_settings.max_fps_index]
+            settings.max_fps = temp_settings.max_fps -- Применяем сразу
+            settings.max_fps_index = temp_settings.max_fps_index
                                                                                                                         end
                                                                                                                         elseif key == "right" then
                                                                                                                             if settings_options[settings_selected_index] == "Music Volume" then
-            temp_settings.music_volume = math.min(1, temp_settings.music_volume + 0.05)
-            settings.music_volume = temp_settings.music_volume
+            temp_settings.music_volume = temp_settings.music_volume + 0.05
+            if temp_settings.music_volume > 1.0 then temp_settings.music_volume = 0.0 end
+            settings.music_volume = temp_settings.music_volume -- Применяем сразу
             if menu_music then menu_music:setVolume(settings.music_volume) end
                                                                                                                                 elseif settings_options[settings_selected_index] == "Background Dim" then
-            temp_settings.background_dim = math.min(1, temp_settings.background_dim + 0.05)
+            temp_settings.background_dim = temp_settings.background_dim + 0.05
+            if temp_settings.background_dim > 1.0 then temp_settings.background_dim = 0.0 end
+            settings.background_dim = temp_settings.background_dim -- Применяем сразу
                                                                                                                                 elseif settings_options[settings_selected_index] == "Show Video" then
             temp_settings.show_video = not temp_settings.show_video
+            settings.show_video = temp_settings.show_video -- Применяем сразу
                                                                                                                                 elseif settings_options[settings_selected_index] == "Resolution" then
-            temp_settings.resolution_index = math.min(#settings.resolutions, temp_settings.resolution_index + 1)
+            temp_settings.resolution_index = temp_settings.resolution_index + 1
+            if temp_settings.resolution_index > #settings.resolutions then temp_settings.resolution_index = 1 end
                                                                                                                                     elseif settings_options[settings_selected_index] == "Window Mode" then
-            temp_settings.fullscreen_mode_index = math.min(#settings.fullscreen_modes, temp_settings.fullscreen_mode_index + 1)
+            temp_settings.fullscreen_mode_index = temp_settings.fullscreen_mode_index + 1
+            if temp_settings.fullscreen_mode_index > #settings.fullscreen_modes then temp_settings.fullscreen_mode_index = 1 end
                                                                                                                                         elseif settings_options[settings_selected_index] == "Lives" then
-            temp_settings.lives = math.min(10, temp_settings.lives + 1)
+            temp_settings.lives = temp_settings.lives + 1
+            if temp_settings.lives > 10 then temp_settings.lives = 1 end
+            settings.lives = temp_settings.lives -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Controls" then
-            temp_settings.controls_index = math.min(#settings.controls_modes, temp_settings.controls_index + 1)
+            temp_settings.controls_index = temp_settings.controls_index + 1
+            if temp_settings.controls_index > #settings.controls_modes then temp_settings.controls_index = 1 end
+            settings.controls_index = temp_settings.controls_index -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Bullet Multiplier" then
             temp_settings.bullet_multiplier = temp_settings.bullet_multiplier + 0.1
+            settings.bullet_multiplier = temp_settings.bullet_multiplier -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Bullet Speed" then
             temp_settings.bullet_speed = temp_settings.bullet_speed + 0.1
+            settings.bullet_speed = temp_settings.bullet_speed -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Bullet Size" then
             temp_settings.bullet_size = temp_settings.bullet_size + 0.1
+            settings.bullet_size = temp_settings.bullet_size -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Player Speed" then
             temp_settings.player_speed = temp_settings.player_speed + 0.1
+            settings.player_speed = temp_settings.player_speed -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Show FPS" then
             temp_settings.show_fps = not temp_settings.show_fps
+            settings.show_fps = temp_settings.show_fps -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Show Hitbox" then
             temp_settings.show_hitbox = not temp_settings.show_hitbox
+            settings.show_hitbox = temp_settings.show_hitbox -- Применяем сразу
         elseif settings_options[settings_selected_index] == "Show Bullet Hitbox" then
             temp_settings.show_bullet_hitboxes = not temp_settings.show_bullet_hitboxes
+            settings.show_bullet_hitboxes = temp_settings.show_bullet_hitboxes -- Применяем сразу
         elseif settings_options[settings_selected_index] == "VSync" then
             temp_settings.vsync = not temp_settings.vsync
         elseif settings_options[settings_selected_index] == "Max FPS" then
-            temp_settings.max_fps_index = math.min(#settings.max_fps_options, temp_settings.max_fps_index + 1)
+            temp_settings.max_fps_index = temp_settings.max_fps_index + 1
+            if temp_settings.max_fps_index > #settings.max_fps_options then temp_settings.max_fps_index = 1 end
             temp_settings.max_fps = settings.max_fps_options[temp_settings.max_fps_index]
+            settings.max_fps = temp_settings.max_fps -- Применяем сразу
+            settings.max_fps_index = temp_settings.max_fps_index
                                                                                                                                             end
                                                                                                                                             elseif key == "return" then
-        if settings_options[settings_selected_index] == "Apply" then
-            settings.music_volume = temp_settings.music_volume
-            settings.background_dim = temp_settings.background_dim
-            settings.show_video = temp_settings.show_video
+        if settings_options[settings_selected_index] == "Save" then
+            -- Проверяем, изменились ли настройки видео
+            local video_changed = false
+            if temp_settings.resolution_index ~= settings.resolution_index or
+               temp_settings.fullscreen_mode_index ~= settings.fullscreen_mode_index or
+               temp_settings.vsync ~= settings.vsync then
+                video_changed = true
+            end
+
+            -- Обновляем настройки видео в основном объекте
             settings.resolution_index = temp_settings.resolution_index
             settings.fullscreen_mode_index = temp_settings.fullscreen_mode_index
-            settings.lives = temp_settings.lives
-            settings.controls_index = temp_settings.controls_index
-            settings.bullet_multiplier = temp_settings.bullet_multiplier
-            settings.bullet_speed = temp_settings.bullet_speed
-            settings.bullet_size = temp_settings.bullet_size
-            settings.player_speed = temp_settings.player_speed
-            settings.show_fps = temp_settings.show_fps
-            settings.show_hitbox = temp_settings.show_hitbox
-            settings.show_bullet_hitboxes = temp_settings.show_bullet_hitboxes
             settings.vsync = temp_settings.vsync
-            settings.max_fps = temp_settings.max_fps
-            settings.max_fps_index = temp_settings.max_fps_index
-                                                                                                                                                    apply_video_settings() -- ПРИМЕНЯЕМ НАСТРОЙКИ
+            
+            -- Применяем видео настройки только если они изменились
+            if video_changed then
+                apply_video_settings()
+            end
+            
             save_game_config() -- СОХРАНЯЕМ В ФАЙЛ
-            if menu_music then menu_music:setVolume(settings.music_volume) end
         elseif settings_options[settings_selected_index] == "Back" then
-            save_game_config() -- Сохраняем настройки (например, громкость, которая применяется сразу)
+            -- Просто выходим, так как настройки уже применены в памяти
             mode = "main_menu"
         end
                                                                                                                                                     elseif key == "escape" then
@@ -580,10 +623,15 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                 if console.isOpen then return end
                                                                                                                                                                                                                                 -- Ограничитель FPS (если VSync выключен)
                                                                                                                                                                                                                                 if not settings.vsync and settings.max_fps > 0 then
-                                                                                                                                                                                                                                    local target = 1 / settings.max_fps
-                                                                                                                                                                                                                                    if dt < target then
-                                                                                                                                                                                                                                        love.timer.sleep(target - dt)
+        next_time = next_time + 1.0 / settings.max_fps
+        local cur_time = love.timer.getTime()
+        if next_time > cur_time then
+            love.timer.sleep(next_time - cur_time)
+        else
+            next_time = cur_time
                                                                                                                                                                                                                                     end
+    else
+        next_time = love.timer.getTime()
                                                                                                                                                                                                                                 end
 
                                                                                                                                                                 if notification_timer > 0 then
@@ -817,7 +865,7 @@ function love.mousepressed(x, y, button)
                 -- Если кликнули по пункту
                 if mode == "settings" then
                     settings_selected_index = i
-                    if settings_options[i] == "Apply" or settings_options[i] == "Back" then
+                    if settings_options[i] == "Save" or settings_options[i] == "Back" then
                         love.keypressed("return") -- Нажимаем кнопку
                     else
                         love.keypressed("right") -- Меняем значение (как стрелка вправо)

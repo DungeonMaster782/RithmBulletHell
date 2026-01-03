@@ -154,6 +154,7 @@ function game.load(song, difficulty, initial_lives, controls_mode, bg_image, mus
     backgroundVideo = nil
     videoUnsupported = false
     videoOffset = 0
+    pauseTime = 0
     state = "playing"
     menu_selection = 1
     local audio_name, video_name
@@ -295,6 +296,7 @@ function game.update(dt)
     if player.dead then
         print("[GAME] Player died. Game Over.")
         state = "game_over"
+        pauseTime = love.timer.getTime()
         menu_selection = 1
         if music then music:stop() end
         if backgroundVideo then backgroundVideo:pause() end
@@ -382,6 +384,7 @@ function game.update(dt)
         -- Небольшая задержка перед победой, чтобы убедиться
         print("[GAME] Victory condition met!")
         state = "victory"
+        pauseTime = love.timer.getTime()
         menu_selection = 1
         if music then music:stop() end
         if backgroundVideo then backgroundVideo:pause() end
@@ -441,7 +444,7 @@ function game.draw()
     -- Отрисовка лазеров
     -- Если пауза, используем зафиксированное время паузы, иначе текущее
     local t = love.timer.getTime()
-    if state == "paused" and pauseTime > 0 then
+    if (state == "paused" or state == "game_over" or state == "victory") and pauseTime > 0 then
         t = pauseTime
     end
     local currentTime = (t - mapStartTime) * 1000

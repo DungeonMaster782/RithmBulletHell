@@ -29,47 +29,7 @@ local player = {
     }
 }
 
-local function load_controls_from_properties()
-    if not love.filesystem.getInfo("config.properties") then return end
-    print("[PLAYER] Loading controls from config.properties...")
-    local contents = love.filesystem.read("config.properties")
-    if not contents then return end
-
-    local function normalize_key(value)
-        if type(value) ~= "string" then return nil end
-        value = value:match("^%s*(.-)%s*$")
-        if value == "" then return nil end
-        return value:lower()
-    end
-
-    local function try_set_control(field, value)
-        local k = normalize_key(value)
-        if not k then return end
-
-        local ok = pcall(love.keyboard.isDown, k)
-        if ok then
-            player.controls[field] = k
-            print("[PLAYER] Control set: " .. field .. " -> " .. k)
-        else
-            print("WARNING: Invalid key constant in config.properties:", k)
-        end
-    end
-
-    for line in contents:gmatch("[^\r\n]+") do
-        if not line:match("^%s*#") and line:match("=") then
-            local key, value = line:match("^%s*([^=]+)%s*=%s*(.-)%s*$")
-            if key and value then
-                if key == "keyUp" then try_set_control("up", value) end
-                if key == "keyDown" then try_set_control("down", value) end
-                if key == "keyLeft" then try_set_control("left", value) end
-                if key == "keyRight" then try_set_control("right", value) end
-            end
-        end
-    end
-end
-
 function player.load(screenWidth, screenHeight)
-    load_controls_from_properties()
     player.texture = love.graphics.newImage("res/images/player.png")
     if love.filesystem.getInfo("res/images/focus.png") then
         player.focusTexture = love.graphics.newImage("res/images/focus.png")
