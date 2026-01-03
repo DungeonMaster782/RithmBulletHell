@@ -3,6 +3,8 @@ local player = {
     y = 300,
     radius = 16,
     hitboxRadius = 6,
+    grazeRadius = 12, -- Радиус грейза (2x хитбокса)
+    score = 0,
     showHitbox = false,
     speed = 200,
     texture = nil,
@@ -26,7 +28,15 @@ local player = {
         down = "down",
         left = "left",
         right = "right"
-    }
+    },
+    -- Переменные для деша
+    dashCharges = 3,
+    maxDashCharges = 3,
+    dashRechargeTimer = 0,
+    dashRechargeTime = 3.0,
+    isDashing = false,
+    dashTimer = 0,
+    dashDuration = 0.5
 }
 
 function player.load(screenWidth, screenHeight)
@@ -51,9 +61,24 @@ function player.load(screenWidth, screenHeight)
         player.screenWidth = screenWidth
         player.screenHeight = screenHeight
     end
+    -- Сброс состояния деша при загрузке
+    player.dashCharges = 3
+    player.dashRechargeTimer = 0
+    player.isDashing = false
+    player.score = 0
+    player.grazeRadius = player.hitboxRadius * 2
 end
 
 function player.update(dt)
+    -- Регенерация зарядов деша
+    if player.dashCharges < player.maxDashCharges then
+        player.dashRechargeTimer = player.dashRechargeTimer + dt
+        if player.dashRechargeTimer >= player.dashRechargeTime then
+            player.dashCharges = player.dashCharges + 1
+            player.dashRechargeTimer = 0
+        end
+    end
+
     local shiftDown = love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")
 
     -- Логика анимации фокуса
@@ -76,16 +101,26 @@ function player.update(dt)
         player.focusAnimTime = 0
     end
 
-    -- Движение
-    local currentSpeed = player.speed
-    if shiftDown then
-        currentSpeed = currentSpeed * 0.5
-    end
+    if player.isDashing then
+        -- Логика движения во время деша (фиксированное направление)
+        player.dashTimer = player.dashTimer - dt
+        player.x = player.x + player.dashVx * dt
+        player.y = player.y + player.dashVy * dt
+        if player.dashTimer <= 0 then
+            player.isDashing = false
+        end
+    else
+        -- Обычное движение
+        local currentSpeed = player.speed
+        if shiftDown then
+            currentSpeed = currentSpeed * 0.5
+        end
 
-    if love.keyboard.isDown(player.controls.up) then player.y = player.y - currentSpeed * dt end
-    if love.keyboard.isDown(player.controls.down) then player.y = player.y + currentSpeed * dt end
-    if love.keyboard.isDown(player.controls.left) then player.x = player.x - currentSpeed * dt end
-    if love.keyboard.isDown(player.controls.right) then player.x = player.x + currentSpeed * dt end
+        if love.keyboard.isDown(player.controls.up) then player.y = player.y - currentSpeed * dt end
+        if love.keyboard.isDown(player.controls.down) then player.y = player.y + currentSpeed * dt end
+        if love.keyboard.isDown(player.controls.left) then player.x = player.x - currentSpeed * dt end
+        if love.keyboard.isDown(player.controls.right) then player.x = player.x + currentSpeed * dt end
+    end
 
     -- Ограничение выхода за границы экрана
     if player.screenWidth and player.screenHeight then
@@ -192,6 +227,9 @@ function player.drawHitbox()
         love.graphics.setColor(1, 0, 0, 1)
         love.graphics.setLineWidth(1)
         love.graphics.circle("line", player.x, player.y, player.hitboxRadius)
+        -- Хитбокс грейза (синий)
+        love.graphics.setColor(0, 1, 1, 0.8)
+        love.graphics.circle("line", player.x, player.y, player.grazeRadius)
         love.graphics.setColor(1, 1, 1, 1)
     end
 end
@@ -204,6 +242,7 @@ function player.shoot()
 end
 
 function player.hit()
+    if player.isDashing then return end -- Неуязвимость во время деша
     if not player.invuln then
         player.lives = player.lives - 1
         player.invuln = true
@@ -228,6 +267,32 @@ function player.set_controls_mode(mode)
         player.controls.left = "left"
         player.controls.right = "right"
     end
+end
+
+function player.attemptDash()
+    if player.dashCharges > 0 and not player.isDashing then
+        local dx, dy = 0, 0
+        if love.keyboard.isDown(player.controls.up) then dy = dy - 1 end
+        if love.keyboard.isDown(player.controls.down) then dy = dy + 1 end
+        if love.keyboard.isDown(player.controls.left) then dx = dx - 1 end
+        if love.keyboard.isDown(player.controls.right) then dx = dx + 1 end
+
+        -- Деш работает только если нажата кнопка направления
+        if dx ~= 0 or dy ~= 0 then
+            local len = math.sqrt(dx*dx + dy*dy)
+            local dashSpeed = player.speed * 4 -- Скорость деша (в 4 раза быстрее обычного)
+            
+            player.dashVx = (dx / len) * dashSpeed
+            player.dashVy = (dy / len) * dashSpeed
+            player.isDashing = true
+            player.dashTimer = player.dashDuration
+            player.dashCharges = player.dashCharges - 1
+        end
+    end
+end
+
+function player.graze()
+    player.score = player.score + 100
 end
 
                                                                 return player

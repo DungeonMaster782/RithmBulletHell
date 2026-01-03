@@ -137,7 +137,7 @@ local function calc_preempt(ar)
 end
 
 -- ======= GAME FUNCTIONS =======
-function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed, show_hitbox, show_bullet_hitboxes, bg_dim, enable_video)
+function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed, show_hitboxes, bg_dim, enable_video)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
     load_config()
     -- Применяем настройки, переданные из меню (они приоритетнее файла)
@@ -196,8 +196,10 @@ function game.load(song, difficulty, initial_lives, controls_mode, bg_image, mus
     player.shotCooldown = 0
     -- *** НОВОЕ: Передаем текущие размеры для правильного центрирования ***
     player.load(love_width, love_height)
-    if show_hitbox ~= nil then player.showHitbox = show_hitbox end
-    if show_bullet_hitboxes ~= nil then bullets.showHitbox = show_bullet_hitboxes end
+    if show_hitboxes ~= nil then 
+        player.showHitbox = show_hitboxes 
+        bullets.showHitbox = show_hitboxes
+    end
     player.speed = 200 * (config.player_speed or 1.0) -- Применяем множитель скорости игрока
     if controls_mode then
         player.set_controls_mode(controls_mode)
@@ -370,6 +372,9 @@ function game.update(dt)
 
             if not player.invuln and dist < (player.hitboxRadius + b.radius) then
                 player.hit()
+            elseif not b.grazed and dist < (player.grazeRadius + b.radius) then
+                b.grazed = true
+                player.graze()
             end
         end
     end
@@ -457,6 +462,16 @@ function game.draw()
                 local tex = (obj.endX * scaleX) + 50
                 local tey = (obj.endY * scaleY) + 50
                 lasers.draw(obj, tx, ty, tex, tey, currentTime)
+                
+                -- Отрисовка хитбокса лазера (если включено отображение)
+                if player.showHitbox then
+                    love.graphics.setColor(1, 0, 0, 0.4)
+                    local oldW = love.graphics.getLineWidth()
+                    love.graphics.setLineWidth(20) -- Ширина лазера (радиус 10 * 2)
+                    love.graphics.line(tx, ty, tex, tey)
+                    love.graphics.setLineWidth(oldW)
+                    love.graphics.setColor(1, 1, 1, 1)
+                end
             elseif obj.type == "circle" and obj.shown and not obj.exploded then
                 -- Отрисовка предупреждающего кольца (Approach Circle)
                 local tx = (obj.x * scaleX) + 50
@@ -492,6 +507,12 @@ function game.draw()
     -- Жизни
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("Lives: " .. player.lives, 10, 10)
+    
+    -- Счетчик дешей
+    local dashText = "Dash: " .. player.dashCharges .. "/" .. player.maxDashCharges
+    if player.dashCharges < player.maxDashCharges then dashText = dashText .. " (" .. string.format("%.1f", player.dashRechargeTime - player.dashRechargeTimer) .. ")" end
+    love.graphics.print(dashText, 10, 30)
+    love.graphics.print("Score: " .. player.score, 10, 50)
 
     bullets.draw()
     player.drawHitbox()
@@ -565,6 +586,12 @@ function game.keypressed(key)
             menu_selection = 1
         elseif key == "space" then
             player.shoot()
+        elseif key == "lctrl" or key == "rctrl" then
+            player.attemptDash()
+        elseif (key == player.controls.up or key == player.controls.down or 
+                key == player.controls.left or key == player.controls.right) and 
+               (love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl")) then
+            player.attemptDash()
         end
     elseif state == "paused" then
         if key == "escape" then
@@ -578,9 +605,11 @@ function game.keypressed(key)
             if backgroundVideo and (t >= videoOffset or videoOffset <= 0) then backgroundVideo:play() end
             
         elseif key == "up" or key == "w" then
-            menu_selection = math.max(1, menu_selection - 1)
+            menu_selection = menu_selection - 1
+            if menu_selection < 1 then menu_selection = 6 end
         elseif key == "down" or key == "s" then
-            menu_selection = math.min(6, menu_selection + 1)
+            menu_selection = menu_selection + 1
+            if menu_selection > 6 then menu_selection = 1 end
         elseif key == "left" and menu_selection == 3 then -- Volume
             current_volume = math.max(0, current_volume - 0.1)
             if music then music:setVolume(current_volume) end

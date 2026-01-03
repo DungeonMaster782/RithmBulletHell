@@ -1,0 +1,15 @@
+music_volume=0.10
+resolution_index=3
+fullscreen_mode_index=2
+lives=5
+controls_index=1
+bullet_multiplier=0.5
+bullet_speed=2.0
+bullet_size=5.0
+player_speed=2.0
+show_fps=true
+show_hitboxes=true
+vsync=true
+background_dim=0.75
+show_video=false
+max_fps=60
