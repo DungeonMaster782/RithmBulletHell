@@ -1,4 +1,5 @@
 local console = require("console")
+local editor = require("editor")
 local maps_dir = "maps"
 local maps = {}
 local selected_index = 1
@@ -19,6 +20,8 @@ local osu_menu_background = nil
 local backgrounds = {}
 
 local main_menu_items = {
+    "Play Custom",
+    "Level Editor",
     "osu-mode",
     "Settings",
     "Exit"
@@ -56,6 +59,8 @@ local settings_options = {"Music Volume", "Background Dim", "Show Video", "Resol
 local settings_selected_index = 1
 
 local next_time = 0
+local custom_maps = {}
+local new_map_name = ""
 local notification = nil
 local notification_timer = 0
 local delete_confirmation = false
@@ -187,6 +192,20 @@ local function delete_map_directory(folder_name)
     print("[MAPS] Deleted map: " .. folder_name)
 end
 
+local function scan_custom_maps()
+    custom_maps = {}
+    local dir = "Mmaps"
+    if not love.filesystem.getInfo(dir) then
+        love.filesystem.createDirectory(dir)
+    end
+    local items = love.filesystem.getDirectoryItems(dir)
+    for _, item in ipairs(items) do
+        if love.filesystem.getInfo(dir .. "/" .. item).type == "directory" then
+            table.insert(custom_maps, item)
+        end
+    end
+end
+
 -- Функции
 function love.load()
 console.load()
@@ -211,6 +230,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                 end
 
                 scan_maps()
+                scan_custom_maps()
 
                 if love.filesystem.getInfo(menu_music_path) then
                     menu_music = love.audio.newSource(menu_music_path, "stream")
@@ -684,6 +704,14 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                             if choice == "osu-mode" then
                                                                                                                                                                                                                                                                 selected_index = 1
                                                                                                                                                                                                                                                                 mode = "osu_menu"
+                                                                                                                                                                                                                                                            elseif choice == "Play Custom" then
+                                                                                                                                                                                                                                                                scan_custom_maps()
+                                                                                                                                                                                                                                                                selected_index = 1
+                                                                                                                                                                                                                                                                mode = "custom_select"
+                                                                                                                                                                                                                                                            elseif choice == "Level Editor" then
+                                                                                                                                                                                                                                                                scan_custom_maps()
+                                                                                                                                                                                                                                                                selected_index = 1
+                                                                                                                                                                                                                                                                mode = "editor_select"
                                                                                                                                                                                                                                                                 elseif choice == "Settings" then
                                                                                                                                                                                                                                                                 settings_selected_index = 1
                                                                                                                                                                                                                                                                 mode = "settings"
@@ -765,6 +793,67 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                 selected_index = 1
                                                                                                                                                                                                                                                                 end
 
+                                                                                                                                                                                                                                                                elseif mode == "editor_name_input" then
+                                                                                                                                                                                                                                                                    if key == "return" then
+                                                                                                                                                                                                                                                                        if new_map_name ~= "" then
+                                                                                                                                                                                                                                                                            editor.load(new_map_name)
+                                                                                                                                                                                                                                                                            mode = "editor"
+                                                                                                                                                                                                                                                                        end
+                                                                                                                                                                                                                                                                    elseif key == "escape" then
+                                                                                                                                                                                                                                                                        mode = "editor_select"
+                                                                                                                                                                                                                                                                    elseif key == "backspace" then
+                                                                                                                                                                                                                                                                        local byteoffset = love.utf8.offset(new_map_name, -1)
+                                                                                                                                                                                                                                                                        if byteoffset then
+                                                                                                                                                                                                                                                                            new_map_name = string.sub(new_map_name, 1, byteoffset - 1)
+                                                                                                                                                                                                                                                                        end
+                                                                                                                                                                                                                                                                    end
+
+                                                                                                                                                                                                                                                                elseif mode == "custom_select" then
+                                                                                                                                                                                                                                                                    if #custom_maps > 0 then
+                                                                                                                                                                                                                                                                        if key == "up" or key == "w" then
+                                                                                                                                                                                                                                                                            selected_index = math.max(1, selected_index - 1)
+                                                                                                                                                                                                                                                                        elseif key == "down" or key == "s" then
+                                                                                                                                                                                                                                                                            selected_index = math.min(#custom_maps, selected_index + 1)
+                                                                                                                                                                                                                                                                        elseif key == "return" then
+                                                                                                                                                                                                                                                                            local map_file = custom_maps[selected_index]
+                                                                                                                                                                                                                                                                            if menu_music and menu_music:isPlaying() then menu_music:stop() end
+                                                                                                                                                                                                                                                                            game = require("game")
+                                                                                                                                                                                                                                                                            game.load_custom(map_file, settings)
+                                                                                                                                                                                                                                                                            mode = "gameplay"
+                                                                                                                                                                                                                                                                        end
+                                                                                                                                                                                                                                                                    end
+                                                                                                                                                                                                                                                                    if key == "escape" then
+                                                                                                                                                                                                                                                                        mode = "main_menu"
+                                                                                                                                                                                                                                                                        selected_index = 1
+                                                                                                                                                                                                                                                                    end
+
+                                                                                                                                                                                                                                                                elseif mode == "editor_select" then
+                                                                                                                                                                                                                                                                    local count = #custom_maps + 1
+                                                                                                                                                                                                                                                                    if key == "up" or key == "w" then
+                                                                                                                                                                                                                                                                        selected_index = math.max(1, selected_index - 1)
+                                                                                                                                                                                                                                                                    elseif key == "down" or key == "s" then
+                                                                                                                                                                                                                                                                        selected_index = math.min(count, selected_index + 1)
+                                                                                                                                                                                                                                                                    elseif key == "return" then
+                                                                                                                                                                                                                                                                        if selected_index == 1 then
+                                                                                                                                                                                                                                                                            mode = "editor_name_input"
+                                                                                                                                                                                                                                                                            new_map_name = ""
+                                                                                                                                                                                                                                                                        else
+                                                                                                                                                                                                                                                                            editor.load(custom_maps[selected_index - 1])
+                                                                                                                                                                                                                                                                        end
+                                                                                                                                                                                                                                                                        mode = "editor"
+                                                                                                                                                                                                                                                                    end
+                                                                                                                                                                                                                                                                    if key == "escape" then
+                                                                                                                                                                                                                                                                        mode = "main_menu"
+                                                                                                                                                                                                                                                                        selected_index = 1
+                                                                                                                                                                                                                                                                    end
+
+                                                                                                                                                                                                                                                                elseif mode == "editor" then
+                                                                                                                                                                                                                                                                    local action = editor.keypressed(key)
+                                                                                                                                                                                                                                                                    if action == "exit" then
+                                                                                                                                                                                                                                                                        mode = "main_menu"
+                                                                                                                                                                                                                                                                        scan_custom_maps()
+                                                                                                                                                                                                                                                                    end
+
                                                                                                                                                                                                                                                                 elseif mode == "gameplay" then
                                                                                                                                                                                                                                 if game and game.keypressed then
                                                                                                                                                                                                                                 local action, new_vol, new_dim, new_video = game.keypressed(key)
@@ -794,13 +883,58 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
+                                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                                if mode == "editor" then
+                                                                                                                                                                                                                                                                    editor.update(dt)
+                                                                                                                                                                                                                                                                end
+
+                                                                                                                                                                                                                                                                -- Draw section additions
+                                                                                                                                                                                                                                                                if mode == "custom_select" then
+                                                                                                                                                                                                                                                                    draw_text_with_outline("Select Custom Map:", 50, 50)
+                                                                                                                                                                                                                                                                    if #custom_maps == 0 then
+                                                                                                                                                                                                                                                                        draw_text_with_outline("No maps in Mmaps folder!", 70, 80, {1, 0, 0, 1})
+                                                                                                                                                                                                                                                                    else
+                                                                                                                                                                                                                                                                        for i, map in ipairs(custom_maps) do
+                                                                                                                                                                                                                                                                            local prefix = (i == selected_index) and "> " or "  "
+                                                                                                                                                                                                                                                                            local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
+                                                                                                                                                                                                                                                                            draw_text_with_outline(prefix .. map, 70, 80 + i * 30, color)
+                                                                                                                                                                                                                                                                        end
+                                                                                                                                                                                                                                                                    end
+                                                                                                                                                                                                                                                                elseif mode == "editor_select" then
+                                                                                                                                                                                                                                                                    draw_text_with_outline("Editor - Select Map:", 50, 50)
+                                                                                                                                                                                                                                                                    local prefix = (selected_index == 1) and "> " or "  "
+                                                                                                                                                                                                                                                                    local color = (selected_index == 1) and {0, 1, 0, 1} or {1, 1, 1, 1}
+                                                                                                                                                                                                                                                                    draw_text_with_outline(prefix .. "[Create New Map]", 70, 80, color)
+                                                                                                                                                                                                                                                                    
+                                                                                                                                                                                                                                                                    for i, map in ipairs(custom_maps) do
+                                                                                                                                                                                                                                                                        local idx = i + 1
+                                                                                                                                                                                                                                                                        prefix = (idx == selected_index) and "> " or "  "
+                                                                                                                                                                                                                                                                        color = (idx == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
+                                                                                                                                                                                                                                                                        draw_text_with_outline(prefix .. map, 70, 80 + idx * 30, color)
+                                                                                                                                                                                                                                                                    end
+                                                                                                                                                                                                                                                                elseif mode == "editor" then
+                                                                                                                                                                                                                                                                    editor.draw()
+                                                                                                                                                                                                                                                                end
+                                                                                                                                                                                                                                                                if mode == "editor_name_input" then
+                                                                                                                                                                                                                                                                    draw_text_with_outline("Enter New Map Name:", 50, 50)
+                                                                                                                                                                                                                                                                    draw_text_with_outline(new_map_name .. "_", 50, 80, {1, 1, 0, 1})
+                                                                                                                                                                                                                                                                end
 
 function love.textinput(t)
     console.textinput(t)
+    if mode == "editor_name_input" then
+        new_map_name = new_map_name .. t
+    end
 end
 
 function love.mousepressed(x, y, button)
     if console.isOpen then return end
+    
+    if mode == "editor" then
+        editor.mousepressed(x, y, button)
+        return
+    end
+
     -- Если мы в игре, передаем управление туда
     if mode == "gameplay" and game and game.mousepressed then
         local action, new_vol, new_dim, new_video = game.mousepressed(x, y, button)
@@ -839,6 +973,8 @@ function love.mousepressed(x, y, button)
         elseif mode == "settings" then count = #settings_options
         elseif mode == "osu_menu" then count = #get_song_list()
         elseif mode == "difficulties" and selected_song then count = #(maps[selected_song] or {})
+        elseif mode == "custom_select" then count = #custom_maps
+        elseif mode == "editor_select" then count = #custom_maps + 1
         end
         
         for i = 1, count do
@@ -902,6 +1038,11 @@ local function write_file(path, data)
 end
 
 function love.filedropped(file)
+    if mode == "editor" then
+        editor.filedropped(file)
+        return
+    end
+
     local filename = file:getFilename()
     local ext = filename:match("%.([^%.]+)$")
     
@@ -965,6 +1106,8 @@ function love.mousemoved(x, y)
     elseif mode == "settings" then count = #settings_options
     elseif mode == "osu_menu" then count = #get_song_list()
     elseif mode == "difficulties" and selected_song then count = #(maps[selected_song] or {})
+    elseif mode == "custom_select" then count = #custom_maps
+    elseif mode == "editor_select" then count = #custom_maps + 1
     end
 
     for i = 1, count do

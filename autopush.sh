@@ -1,4 +1,4 @@
 #!/bin/bash
 git add .
-git commit -m "Alpha V1.2.3"
+git commit -m "Alpha V1.2.4"
 git push

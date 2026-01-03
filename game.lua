@@ -136,6 +136,64 @@ local function calc_preempt(ar)
     end
 end
 
+-- ======= CUSTOM GAME LOAD =======
+function game.load_custom(folder_name, settings)
+    print("[GAME] Loading custom map: " .. folder_name)
+    load_config()
+    -- Apply settings
+    config.bullet_multiplier = settings.bullet_multiplier
+    config.bullet_speed = settings.bullet_speed
+    config.bullet_size = settings.bullet_size
+    config.player_speed = settings.player_speed
+    
+    -- Load map data
+    local dir = "Mmaps/" .. folder_name
+    local path = dir .. "/map.lua"
+    hitObjects = {} -- Очищаем старые объекты
+    
+    if love.filesystem.getInfo(path) then
+        local chunk = love.filesystem.load(path)
+        if chunk then
+            local map_data = chunk()
+            if map_data.objects then
+                for _, obj in ipairs(map_data.objects) do
+                    table.insert(hitObjects, {
+                        x = obj.x,
+                        y = obj.y,
+                        time = (obj.time * 1000), -- Переводим секунды в мс (как в osu)
+                        type = obj.type or "circle",
+                        preempt = 1200, -- Стандартное время предупреждения
+                        exploded = false,
+                        shown = false
+                    })
+                end
+            end
+            print("[GAME] Loaded " .. #hitObjects .. " objects")
+        end
+    end
+    
+    -- Load Audio
+    local exts = {"mp3", "ogg", "wav"}
+    music = nil
+    for _, ext in ipairs(exts) do
+        local audio_path = dir .. "/audio." .. ext
+        if love.filesystem.getInfo(audio_path) then
+            music = love.audio.newSource(audio_path, "stream")
+            music:setVolume(settings.music_volume)
+            music:play()
+            print("[GAME] Loaded custom audio: " .. audio_path)
+            break
+        end
+    end
+    
+    -- Reset game state
+    state = "playing"
+    player.lives = settings.lives
+    player.load(love.graphics.getWidth(), love.graphics.getHeight())
+    bullets.load()
+    mapStartTime = love.timer.getTime()
+end
+
 -- ======= GAME FUNCTIONS =======
 function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed, show_hitboxes, bg_dim, enable_video)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
