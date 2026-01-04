@@ -98,16 +98,17 @@ end
 -- Загрузка конфига игры (для bullet settings)
 local function load_game_config()
     local contents = nil
-    if love.filesystem.getInfo("config.txt") then
+    
+    -- 1. Сначала проверяем локальный файл (приоритет для переносной версии)
+    local f = io.open("config.txt", "r")
+    if f then
+        contents = f:read("*all")
+        f:close()
+        print("[CONFIG] Loading config.txt from local file...")
+    elseif love.filesystem.getInfo("config.txt") then
+        -- 2. Если локального нет, читаем через LÖVE (Save Directory или Source)
         contents = love.filesystem.read("config.txt")
-        print("[CONFIG] Loading config.txt from save directory...")
-    else
-        local f = io.open("config.txt", "r")
-        if f then
-            contents = f:read("*all")
-            f:close()
-            print("[CONFIG] Loading config.txt from local file...")
-        end
+        print("[CONFIG] Loading config.txt from save directory/source...")
     end
     
     if not contents then return end
@@ -846,7 +847,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
 
                                                                                                                                                                                                                                                                 -- Загрузка и инициализация игры
                                                                                                                                                                                                                                                                 game = require("game")
-                                                                                                                                                                                                                                game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitboxes, settings.background_dim, settings.show_video)
+                                                                                                                                                                                                                                game.load(selected_song, selected_difficulty, backgrounds[selected_song], settings)
 
                                                                                                                                                                                                                                                                 mode = "gameplay"
                                                                                                                                                                                                                                                                 end
@@ -968,7 +969,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                         if new_video ~= nil then settings.show_video = new_video end
                                                                                                                                                                                                                                         save_game_config()
                                                                                                                                                                                                                                     end
-                                                                                                                                        game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitboxes, settings.background_dim, settings.show_video)
+                                                                                                                                        game.load(selected_song, selected_difficulty, backgrounds[selected_song], settings)
                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
@@ -1056,7 +1057,7 @@ function love.mousepressed(x, y, button)
                 if new_video ~= nil then settings.show_video = new_video end
                 save_game_config()
             end
-            game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitboxes, settings.background_dim, settings.show_video)
+            game.load(selected_song, selected_difficulty, backgrounds[selected_song], settings)
         end
         return
     end

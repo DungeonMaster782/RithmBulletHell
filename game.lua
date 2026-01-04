@@ -117,19 +117,65 @@ local function calc_preempt(ar)
     end
 end
 
--- ======= CUSTOM GAME LOAD =======
-function game.load_custom(folder_name, settings)
-    print("[GAME] Loading custom map: " .. folder_name)
-    -- Apply settings
+-- ======= HELPER FUNCTIONS =======
+local function apply_settings(settings)
+    -- Config
     config.bullet_multiplier = settings.bullet_multiplier
     config.bullet_speed = settings.bullet_speed
     config.bullet_size = settings.bullet_size
     config.player_speed = settings.player_speed
     
-    -- Sync settings
+    -- Audio/Video
     current_volume = settings.music_volume
     backgroundDim = settings.background_dim
     showVideo = settings.show_video
+    
+    -- Player
+    player.lives = settings.lives
+    player.speed = 200 * (config.player_speed or 1.0)
+    
+    if settings.controls_modes and settings.controls_index then
+        player.set_controls_mode(settings.controls_modes[settings.controls_index])
+    end
+    
+    if settings.show_hitboxes ~= nil then
+        player.showHitbox = settings.show_hitboxes
+        bullets.showHitbox = settings.show_hitboxes
+    end
+end
+
+local function reset_state()
+    state = "playing"
+    menu_selection = 1
+    pauseTime = 0
+    bullets.load()
+    
+    titleFont = love.graphics.newFont(30)
+    menuFont = love.graphics.newFont(18)
+    
+    -- Particles
+    local p_canvas = love.graphics.newCanvas(8, 8)
+    love.graphics.setCanvas(p_canvas)
+    love.graphics.clear(0, 0, 0, 0)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.circle("fill", 4, 4, 4)
+    love.graphics.setCanvas()
+    
+    particleSystem = love.graphics.newParticleSystem(p_canvas, 1000)
+    particleSystem:setParticleLifetime(0.5, 1.0)
+    particleSystem:setLinearAcceleration(-50, -50, 50, 50)
+    particleSystem:setSpeed(100, 400)
+    particleSystem:setLinearDamping(3)
+    particleSystem:setSpread(math.pi * 2)
+    particleSystem:setColors(1, 1, 0.8, 1, 1, 0.5, 0, 1, 1, 0, 0, 0)
+    particleSystem:setSizes(1.5, 2.5, 0)
+end
+
+-- ======= CUSTOM GAME LOAD =======
+function game.load_custom(folder_name, settings)
+    print("[GAME] Loading custom map: " .. folder_name)
+    
+    apply_settings(settings)
     
     -- Сброс масштабирования для кастомных карт (они используют абсолютные координаты)
     scaleX, scaleY = 1, 1
@@ -176,39 +222,24 @@ function game.load_custom(folder_name, settings)
     end
     
     -- Reset game state
-    state = "playing"
-    player.lives = settings.lives
+    reset_state()
     player.load(love.graphics.getWidth(), love.graphics.getHeight())
-    bullets.load()
-    
-    -- Применяем настройки хитбоксов
-    if settings.show_hitboxes ~= nil then
-        player.showHitbox = settings.show_hitboxes
-        bullets.showHitbox = settings.show_hitboxes
-    end
     mapStartTime = love.timer.getTime()
 end
 
 -- ======= GAME FUNCTIONS =======
-function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed, show_hitboxes, bg_dim, enable_video)
+function game.load(song, difficulty, bg_image, settings)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
-    -- Применяем настройки, переданные из меню (они приоритетнее файла)
-    if bullet_multiplier then config.bullet_multiplier = bullet_multiplier end
-    if bullet_speed then config.bullet_speed = bullet_speed end
-    if bullet_size then config.bullet_size = bullet_size end
-    if player_speed then config.player_speed = player_speed end
+    apply_settings(settings)
     print("[GAME] Config: Multiplier=" .. config.bullet_multiplier .. ", Speed=" .. config.bullet_speed .. ", Size=" .. config.bullet_size .. ", PlayerSpeed=" .. (config.player_speed or 1.0))
 
     local map_path = "maps/" .. song .. "/" .. difficulty
     backgroundImage = bg_image
-    backgroundDim = bg_dim or 0.5
-    showVideo = (enable_video == nil) and true or enable_video
+    -- backgroundDim and showVideo are set in apply_settings
+    
     backgroundVideo = nil
     videoUnsupported = false
     videoOffset = 0
-    pauseTime = 0
-    state = "playing"
-    menu_selection = 1
     local audio_name, video_name
     hitObjects, approachRate, audio_name, video_name, videoOffset = parse_osu(map_path)
     preempt = calc_preempt(approachRate)
@@ -238,26 +269,11 @@ function game.load(song, difficulty, initial_lives, controls_mode, bg_image, mus
     offsetX = 50
     offsetY = 50
 
+    reset_state()
+
     -- Инициализируем player
-    if type(initial_lives) ~= "number" then initial_lives = 3 end
-    if initial_lives < 1 then initial_lives = 1 end
-    if initial_lives > 99 then initial_lives = 99 end
-    player.lives = math.floor(initial_lives)
-    player.invuln = false
-    player.invuln_timer = 0
-    player.dead = false
-    player.shots = {}
-    player.shotCooldown = 0
     -- *** НОВОЕ: Передаем текущие размеры для правильного центрирования ***
     player.load(love_width, love_height)
-    if show_hitboxes ~= nil then 
-        player.showHitbox = show_hitboxes 
-        bullets.showHitbox = show_hitboxes
-    end
-    player.speed = 200 * (config.player_speed or 1.0) -- Применяем множитель скорости игрока
-    if controls_mode then
-        player.set_controls_mode(controls_mode)
-    end
 
     -- Загрузка видео
     if video_name then
@@ -296,42 +312,18 @@ function game.load(song, difficulty, initial_lives, controls_mode, bg_image, mus
         end
     end
 
-    bullets.load()
-
     local audio_path = "maps/" .. song .. "/" .. audio_name
     if love.filesystem.getInfo(audio_path) then
         music = love.audio.newSource(audio_path, "stream")
         music:setLooping(false) -- Музыка карты не должна повторяться
-        music:setVolume(music_volume or 0.7)
+        music:setVolume(current_volume)
         music:play()
-        current_volume = music_volume or 0.7
         print("[AUDIO] Music loaded and playing: " .. audio_path)
     else
         print("WARNING: music file missing:", audio_path)
-        current_volume = music_volume or 1.0
     end
 
     mapStartTime = love.timer.getTime()
-    
-    titleFont = love.graphics.newFont(30)
-    menuFont = love.graphics.newFont(18)
-
-    -- Инициализация системы частиц (простой кружок)
-    local p_canvas = love.graphics.newCanvas(8, 8)
-    love.graphics.setCanvas(p_canvas)
-    love.graphics.clear(0, 0, 0, 0)
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.circle("fill", 4, 4, 4)
-    love.graphics.setCanvas()
-    
-    particleSystem = love.graphics.newParticleSystem(p_canvas, 1000)
-    particleSystem:setParticleLifetime(0.5, 1.0)
-    particleSystem:setLinearAcceleration(-50, -50, 50, 50)
-    particleSystem:setSpeed(100, 400) -- Добавляем скорость разлета (взрыв)
-    particleSystem:setLinearDamping(3) -- Частицы замедляются
-    particleSystem:setSpread(math.pi * 2) -- Разлет во все стороны (360 градусов)
-    particleSystem:setColors(1, 1, 0.8, 1, 1, 0.5, 0, 1, 1, 0, 0, 0) -- Белый -> Оранжевый -> Красный -> Прозрачный
-    particleSystem:setSizes(1.5, 2.5, 0) -- Увеличиваем размер частиц
 end
 
 function game.update(dt)
