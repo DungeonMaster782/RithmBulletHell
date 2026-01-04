@@ -65,6 +65,7 @@ local notification = nil
 local notification_timer = 0
 local delete_confirmation = false
 local map_to_delete = nil
+local map_to_delete_folder = "maps"
 
 local menu_music = nil
 local menu_music_path = "res/sounds/menu_music.mp3" -- путь к mp3
@@ -131,23 +132,25 @@ end
 -- Сохранение конфига игры
 local function save_game_config()
     print("[CONFIG] Saving config.txt...")
-    local content = ""
-    content = content .. "music_volume=" .. string.format("%.2f", settings.music_volume) .. "\n"
-    content = content .. "resolution_index=" .. settings.resolution_index .. "\n"
-    content = content .. "fullscreen_mode_index=" .. settings.fullscreen_mode_index .. "\n"
-    content = content .. "lives=" .. settings.lives .. "\n"
-    content = content .. "controls_index=" .. settings.controls_index .. "\n"
-    content = content .. "bullet_multiplier=" .. string.format("%.1f", settings.bullet_multiplier) .. "\n"
-    content = content .. "bullet_speed=" .. string.format("%.1f", settings.bullet_speed) .. "\n"
-    content = content .. "bullet_size=" .. string.format("%.1f", settings.bullet_size) .. "\n"
-    content = content .. "player_speed=" .. string.format("%.1f", settings.player_speed) .. "\n"
-    content = content .. "show_fps=" .. tostring(settings.show_fps) .. "\n"
-    content = content .. "show_hitboxes=" .. tostring(settings.show_hitboxes) .. "\n"
-    content = content .. "vsync=" .. tostring(settings.vsync) .. "\n"
-    content = content .. "background_dim=" .. string.format("%.2f", settings.background_dim) .. "\n"
-    content = content .. "show_video=" .. tostring(settings.show_video) .. "\n"
-    content = content .. "max_fps=" .. settings.max_fps .. "\n"
+    local lines = {}
+    table.insert(lines, "music_volume=" .. string.format("%.2f", settings.music_volume))
+    table.insert(lines, "resolution_index=" .. settings.resolution_index)
+    table.insert(lines, "fullscreen_mode_index=" .. settings.fullscreen_mode_index)
+    table.insert(lines, "lives=" .. settings.lives)
+    table.insert(lines, "controls_index=" .. settings.controls_index)
+    table.insert(lines, "bullet_multiplier=" .. string.format("%.1f", settings.bullet_multiplier))
+    table.insert(lines, "bullet_speed=" .. string.format("%.1f", settings.bullet_speed))
+    table.insert(lines, "bullet_size=" .. string.format("%.1f", settings.bullet_size))
+    table.insert(lines, "player_speed=" .. string.format("%.1f", settings.player_speed))
+    table.insert(lines, "show_fps=" .. tostring(settings.show_fps))
+    table.insert(lines, "show_hitboxes=" .. tostring(settings.show_hitboxes))
+    table.insert(lines, "vsync=" .. tostring(settings.vsync))
+    table.insert(lines, "background_dim=" .. string.format("%.2f", settings.background_dim))
+    table.insert(lines, "show_video=" .. tostring(settings.show_video))
+    table.insert(lines, "max_fps=" .. settings.max_fps)
     
+    local content = table.concat(lines, "\n")
+
     -- Пытаемся сохранить файл прямо в папку с игрой (через io), чтобы настройки были переносными
     local f = io.open("config.txt", "w")
     if f then
@@ -161,8 +164,9 @@ local function save_game_config()
     end
 end
 
-local function delete_map_directory(folder_name)
-    local path = "maps/" .. folder_name
+local function delete_map_directory(folder_name, base_dir)
+    base_dir = base_dir or "maps"
+    local path = base_dir .. "/" .. folder_name
     
     -- 1. Удаляем из save directory (рекурсивно)
     local function recursive_love_remove(p)
@@ -582,6 +586,9 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                         local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
                                                                                                                                                                                                         draw_text_with_outline(prefix .. folder, 70, 80 + i * 30, color)
                                                                                                                                                                                                         end
+                                                                                                                                                                                                        love.graphics.setColor(1, 0.5, 0.5, 1)
+                                                                                                                                                                                                        draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
+                                                                                                                                                                                                        love.graphics.setColor(1, 1, 1, 1)
 
                                                                                                                                                                                                         elseif mode == "difficulties" and selected_song then
                                                                                                                                                                                                             local bg = backgrounds[selected_song]
@@ -619,6 +626,9 @@ if love.filesystem.getInfo(main_menu_background_path) then
                 local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
                 draw_text_with_outline(prefix .. map, 70, 80 + i * 30, color)
             end
+            love.graphics.setColor(1, 0.5, 0.5, 1)
+            draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
+            love.graphics.setColor(1, 1, 1, 1)
         end
     elseif mode == "editor_select" then
         draw_text_with_outline("Editor - Select Map:", 50, 50)
@@ -631,6 +641,11 @@ if love.filesystem.getInfo(main_menu_background_path) then
             prefix = (idx == selected_index) and "> " or "  "
             color = (idx == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
             draw_text_with_outline(prefix .. map, 70, 80 + idx * 30, color)
+        end
+        if selected_index > 1 then
+            love.graphics.setColor(1, 0.5, 0.5, 1)
+            draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
+            love.graphics.setColor(1, 1, 1, 1)
         end
     elseif mode == "editor" then
         editor.draw()
@@ -710,8 +725,12 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                 if delete_confirmation then
                                                                                                                                                                     if key == "y" then
                                                                                                                                                                         if map_to_delete then
-                                                                                                                                                                            delete_map_directory(map_to_delete)
-                                                                                                                                                                            scan_maps()
+                                                                                                                                                                            delete_map_directory(map_to_delete, map_to_delete_folder)
+                                                                                                                                                                            if map_to_delete_folder == "Mmaps" then
+                                                                                                                                                                                scan_custom_maps()
+                                                                                                                                                                            else
+                                                                                                                                                                                scan_maps()
+                                                                                                                                                                            end
                                                                                                                                                                             selected_index = 1
                                                                                                                                                                             notification = "Map deleted: " .. map_to_delete
                                                                                                                                                                             notification_timer = 3
@@ -758,7 +777,6 @@ if love.filesystem.getInfo(main_menu_background_path) then
             temp_settings.player_speed = settings.player_speed
             temp_settings.show_fps = settings.show_fps
             temp_settings.show_hitbox = settings.show_hitbox
-            temp_settings.show_bullet_hitboxes = settings.show_bullet_hitboxes
             temp_settings.vsync = settings.vsync
             temp_settings.max_fps = settings.max_fps
             temp_settings.background_dim = settings.background_dim
@@ -789,6 +807,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                     local keys = get_song_list()
                                                                                                                                                                                                                                                                     if #keys > 0 then
                                                                                                                                                                                                                                                                         map_to_delete = keys[selected_index]
+                                                                                                                                                                                                        map_to_delete_folder = "maps"
                                                                                                                                                                                                                                                                         delete_confirmation = true
                                                                                                                                                                                                                                                                     end
                                                                                                                                                                                                                                                                 end
@@ -867,6 +886,12 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                             game.load_custom(map_file, settings)
                                                                                                                                                                                                                                                                             mode = "gameplay"
                                                                                                                                                                                                                                                                         end
+                                                                                                                                                                                                    elseif key == "delete" then
+                                                                                                                                                                                                        if #custom_maps > 0 then
+                                                                                                                                                                                                            map_to_delete = custom_maps[selected_index]
+                                                                                                                                                                                                            map_to_delete_folder = "Mmaps"
+                                                                                                                                                                                                            delete_confirmation = true
+                                                                                                                                                                                                        end
                                                                                                                                                                                                                                                                     end
                                                                                                                                                                                                                                                                     if key == "escape" then
                                                                                                                                                                                                                                                                         mode = "main_menu"
@@ -888,6 +913,13 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                            mode = "editor"
                                                                                                                                                                                                                                                                         end
                                                                                                                                                                                                                                                                     end
+                                                                                                                                                                                                    if key == "delete" then
+                                                                                                                                                                                                        if selected_index > 1 then
+                                                                                                                                                                                                            map_to_delete = custom_maps[selected_index - 1]
+                                                                                                                                                                                                            map_to_delete_folder = "Mmaps"
+                                                                                                                                                                                                            delete_confirmation = true
+                                                                                                                                                                                                        end
+                                                                                                                                                                                                    end
                                                                                                                                                                                                                                                                     if key == "escape" then
                                                                                                                                                                                                                                                                         mode = "main_menu"
                                                                                                                                                                                                                                                                         selected_index = 1
@@ -945,6 +977,9 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                             local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
                                                                                                                                                                                                                                                                             draw_text_with_outline(prefix .. map, 70, 80 + i * 30, color)
                                                                                                                                                                                                                                                                         end
+                                                                                                                                                                                                        love.graphics.setColor(1, 0.5, 0.5, 1)
+                                                                                                                                                                                                        draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
+                                                                                                                                                                                                        love.graphics.setColor(1, 1, 1, 1)
                                                                                                                                                                                                                                                                     end
                                                                                                                                                                                                                                                                 elseif mode == "editor_select" then
                                                                                                                                                                                                                                                                     draw_text_with_outline("Editor - Select Map:", 50, 50)
@@ -958,6 +993,11 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                         color = (idx == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
                                                                                                                                                                                                                                                                         draw_text_with_outline(prefix .. map, 70, 80 + idx * 30, color)
                                                                                                                                                                                                                                                                     end
+                                                                                                                                                                                                    if selected_index > 1 then
+                                                                                                                                                                                                        love.graphics.setColor(1, 0.5, 0.5, 1)
+                                                                                                                                                                                                        draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
+                                                                                                                                                                                                        love.graphics.setColor(1, 1, 1, 1)
+                                                                                                                                                                                                    end
                                                                                                                                                                                                                                                                 elseif mode == "editor" then
                                                                                                                                                                                                                                                                     editor.draw()
                                                                                                                                                                                                                                                                 end

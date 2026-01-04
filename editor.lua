@@ -62,41 +62,62 @@ function editor.load(folder_name)
 end
 
 function editor.loadMusic(dir)
-    local exts = {"mp3", "ogg", "wav"}
+    local exts = {"ogg", "mp3", "wav"} -- Reordered: OGG is preferred in Love2D
+    
+    -- Helper function to attempt loading with fallback
+    -- Replace the inner 'tryLoad' function in editor.lua with this:
+
+    local function tryLoad(dataOrPath, name)
+        -- Attempt 1: Stream
+        local status, result = pcall(love.audio.newSource, dataOrPath, "stream")
+        
+        if status then
+            music = result
+            duration = music:getDuration()
+            editor.notify("Music loaded (Stream): " .. name)
+            return true
+        else
+            print("Stream error for " .. name .. ": " .. tostring(result))
+        end
+        
+        -- Attempt 2: Static (Forces full decode)
+        status, result = pcall(love.audio.newSource, dataOrPath, "static")
+        
+        if status then
+            music = result
+            duration = music:getDuration()
+            editor.notify("Music loaded (Static): " .. name)
+            return true
+        else
+            print("CRITICAL: Static error for " .. name .. ": " .. tostring(result))
+        end
+        
+        return false
+    end
+
     for _, ext in ipairs(exts) do
         local filename = "audio." .. ext
         local path = dir .. "/" .. filename
         
+        -- Method A: Standard Love Filesystem
         if love.filesystem.getInfo(path) then
-            local ok, src = pcall(love.audio.newSource, path, "stream")
-            if ok then
-                music = src
-                duration = music:getDuration()
-                editor.notify("Music loaded: " .. filename)
-                return
-            else
-                print("Failed to load audio source: " .. path)
-            end
+            if tryLoad(path, filename) then return end
         end
         
-        -- Fallback: Try loading via io (if file is in game folder but hidden from love.filesystem)
+        -- Method B: IO Fallback (For local files not mounted in SaveDirectory)
         local f = io.open(path, "rb")
         if f then
             local data = f:read("*all")
             f:close()
             if data then
                 local fileData = love.filesystem.newFileData(data, filename)
-                local ok, src = pcall(love.audio.newSource, fileData, "stream")
-                if ok then
-                    music = src
-                    duration = music:getDuration()
-                    editor.notify("Music loaded (local): " .. filename)
-                    return
-                end
+                if tryLoad(fileData, filename .. " (local)") then return end
             end
         end
     end
-    editor.notify("No audio found. Drop MP3/OGG here!")
+    
+    editor.notify("No valid audio found. Drop MP3/OGG here!")
+    print("Audio Error: Files found but could not be decoded.")
 end
 
 function editor.notify(msg)
@@ -150,7 +171,15 @@ function editor.draw()
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("EDITOR: " .. map_name, 10, 10)
     love.graphics.print("Time: " .. string.format("%.2f", currentTime) .. " / " .. string.format("%.2f", duration), 10, 30)
-    love.graphics.print("[Space] Play | [+/-] Speed (" .. playbackSpeed .. "x) | [G] Grid (" .. gridSize .. ") | [RMB] Delete", 10, 50)
+    love.graphics.print("[Space] Play | [+/-] Speed (" .. playbackSpeed .. "x) | [G] Grid (" .. gridSize .. ") | [RMB] Delete | [S] Save", 10, 50)
+    
+    -- Кнопка сохранения
+    local btnX = w - 120
+    local btnY = 10
+    love.graphics.setColor(0, 0.6, 0, 1)
+    love.graphics.rectangle("fill", btnX, btnY, 100, 30, 5, 5)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print("SAVE", btnX + 30, btnY + 5)
     
     -- Отрисовка объектов
     local preempt = 1.2 -- Время появления (как AR в osu)
@@ -217,6 +246,13 @@ function editor.mousepressed(x, y, button)
     
     local h = love.graphics.getHeight()
     local barHeight = 30
+    local w = love.graphics.getWidth()
+    
+    -- Клик по кнопке Save
+    if x >= w - 120 and x <= w - 20 and y >= 10 and y <= 40 then
+        editor.save()
+        return
+    end
     
     -- Клик по таймлайну
     if y >= h - barHeight then

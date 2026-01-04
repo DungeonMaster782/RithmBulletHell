@@ -14,7 +14,6 @@ local config = { bullet_multiplier = 0.5, bullet_speed = 1.0, bullet_size = 1.0,
 local scaleX = 1
 local scaleY = 1
 local settingsOpen = false
-local tempConfig = {}
 local state = "playing" -- "playing", "paused", "game_over", "victory"
 local menu_selection = 1
 local current_volume = 1.0
@@ -29,26 +28,6 @@ local pauseTime = 0 -- Время начала паузы
 local videoUnsupported = false -- Флаг для отображения предупреждения
 local videoOffset = 0 -- Смещение видео (из .osu файла)
 
--- ======= CONFIG LOADING =======
-local function load_config()
-    if not love.filesystem.getInfo("config.txt") then return end
-    local contents = love.filesystem.read("config.txt")
-    print("[GAME] Loading local config...")
-    for line in contents:gmatch("[^\r\n]+") do
-        local key, value = line:match("^([%w_]+)%s*=%s*([%d%.]+)")
-        if key and value then
-            config[key] = tonumber(value)
-        end
-    end
-end
-
-local function save_config()
-    local content = ""
-    for k, v in pairs(config) do
-        content = content .. k .. "=" .. v .. "\n"
-    end
-    love.filesystem.write("config.txt", content)
-end
 
 -- ======= .OSU PARSER =======
 local function parse_osu(path)
@@ -139,7 +118,6 @@ end
 -- ======= CUSTOM GAME LOAD =======
 function game.load_custom(folder_name, settings)
     print("[GAME] Loading custom map: " .. folder_name)
-    load_config()
     -- Apply settings
     config.bullet_multiplier = settings.bullet_multiplier
     config.bullet_speed = settings.bullet_speed
@@ -197,7 +175,6 @@ end
 -- ======= GAME FUNCTIONS =======
 function game.load(song, difficulty, initial_lives, controls_mode, bg_image, music_volume, bullet_multiplier, bullet_speed, bullet_size, player_speed, show_hitboxes, bg_dim, enable_video)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
-    load_config()
     -- Применяем настройки, переданные из меню (они приоритетнее файла)
     if bullet_multiplier then config.bullet_multiplier = bullet_multiplier end
     if bullet_speed then config.bullet_speed = bullet_speed end
