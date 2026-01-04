@@ -13,6 +13,8 @@ local config = { bullet_multiplier = 0.5, bullet_speed = 1.0, bullet_size = 1.0,
 -- *** НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ АДАПТАЦИИ ***
 local scaleX = 1
 local scaleY = 1
+local offsetX = 0
+local offsetY = 0
 local settingsOpen = false
 local state = "playing" -- "playing", "paused", "game_over", "victory"
 local menu_selection = 1
@@ -124,6 +126,15 @@ function game.load_custom(folder_name, settings)
     config.bullet_size = settings.bullet_size
     config.player_speed = settings.player_speed
     
+    -- Sync settings
+    current_volume = settings.music_volume
+    backgroundDim = settings.background_dim
+    showVideo = settings.show_video
+    
+    -- Сброс масштабирования для кастомных карт (они используют абсолютные координаты)
+    scaleX, scaleY = 1, 1
+    offsetX, offsetY = 0, 0
+    
     -- Load map data
     local dir = "Mmaps/" .. folder_name
     local path = dir .. "/map.lua"
@@ -169,6 +180,12 @@ function game.load_custom(folder_name, settings)
     player.lives = settings.lives
     player.load(love.graphics.getWidth(), love.graphics.getHeight())
     bullets.load()
+    
+    -- Применяем настройки хитбоксов
+    if settings.show_hitboxes ~= nil then
+        player.showHitbox = settings.show_hitboxes
+        bullets.showHitbox = settings.show_hitboxes
+    end
     mapStartTime = love.timer.getTime()
 end
 
@@ -218,6 +235,8 @@ function game.load(song, difficulty, initial_lives, controls_mode, bg_image, mus
 
     scaleX = uniform_scale * (love_width / 800) -- Коррекция для центровки
     scaleY = uniform_scale * (love_height / 600) -- Коррекция для центровки
+    offsetX = 50
+    offsetY = 50
 
     -- Инициализируем player
     if type(initial_lives) ~= "number" then initial_lives = 3 end
@@ -353,12 +372,12 @@ function game.update(dt)
     if hitObjects then
         for _, obj in ipairs(hitObjects) do
             -- Переводим координаты в текущее разрешение
-            local translated_x = (obj.x * scaleX) + 50
-            local translated_y = (obj.y * scaleY) + 50
+            local translated_x = (obj.x * scaleX) + offsetX
+            local translated_y = (obj.y * scaleY) + offsetY
             
             if obj.type == "slider" then
-                local translated_endX = (obj.endX * scaleX) + 50
-                local translated_endY = (obj.endY * scaleY) + 50
+                local translated_endX = (obj.endX * scaleX) + offsetX
+                local translated_endY = (obj.endY * scaleY) + offsetY
                 
                 if not obj.shown and currentTime >= obj.time - obj.preempt then
                     obj.shown = true
@@ -492,10 +511,10 @@ function game.draw()
     if hitObjects then
         for _, obj in ipairs(hitObjects) do
             if obj.type == "slider" and obj.shown and not obj.exploded then
-                local tx = (obj.x * scaleX) + 50
-                local ty = (obj.y * scaleY) + 50
-                local tex = (obj.endX * scaleX) + 50
-                local tey = (obj.endY * scaleY) + 50
+                local tx = (obj.x * scaleX) + offsetX
+                local ty = (obj.y * scaleY) + offsetY
+                local tex = (obj.endX * scaleX) + offsetX
+                local tey = (obj.endY * scaleY) + offsetY
                 lasers.draw(obj, tx, ty, tex, tey, currentTime)
                 
                 -- Отрисовка хитбокса лазера (если включено отображение)
@@ -509,8 +528,8 @@ function game.draw()
                 end
             elseif obj.type == "circle" and obj.shown and not obj.exploded then
                 -- Отрисовка предупреждающего кольца (Approach Circle)
-                local tx = (obj.x * scaleX) + 50
-                local ty = (obj.y * scaleY) + 50
+                local tx = (obj.x * scaleX) + offsetX
+                local ty = (obj.y * scaleY) + offsetY
                 
                 -- Прогресс от 0 (появление) до 1 (взрыв)
                 local progress = 1 - ((obj.time - currentTime) / obj.preempt)

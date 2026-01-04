@@ -2,7 +2,9 @@ local bullets = {
     list = {},
     texture = nil,
     glowTexture = nil,
-    showHitbox = false
+    showHitbox = false,
+    batch = nil,
+    glowBatch = nil
 }
 
 function bullets.load()
@@ -27,6 +29,14 @@ function bullets.load()
         end
     end
     bullets.glowTexture = love.graphics.newImage(data)
+    
+    -- Инициализация SpriteBatch для оптимизации отрисовки
+    if bullets.texture then
+        bullets.batch = love.graphics.newSpriteBatch(bullets.texture, 3000, "stream")
+    end
+    if bullets.glowTexture then
+        bullets.glowBatch = love.graphics.newSpriteBatch(bullets.glowTexture, 3000, "stream")
+    end
 end
 
 function bullets.spawn(x, y, speed, angle, radius)
@@ -75,37 +85,47 @@ function bullets.update(dt)
 end
 
 function bullets.draw()
+    -- Очищаем батчи
+    if bullets.batch then bullets.batch:clear() end
+    if bullets.glowBatch then bullets.glowBatch:clear() end
+
     -- 1. Слой свечения (Glow)
     love.graphics.setBlendMode("add")
     love.graphics.setColor(0.2, 0.6, 1, 0.8) -- Голубоватое свечение
     
-    if bullets.glowTexture then
+    if bullets.glowTexture and bullets.glowBatch then
         local gw = bullets.glowTexture:getWidth()
         local gh = bullets.glowTexture:getHeight()
         local ox, oy = gw / 2, gh / 2
         
         for _, b in ipairs(bullets.list) do
-            -- Масштабируем: хотим, чтобы свечение было в 3 раза больше радиуса пули
             local scale = (b.radius * 3) / ox
-            love.graphics.draw(bullets.glowTexture, b.x, b.y, 0, scale, scale, ox, oy)
+            bullets.glowBatch:add(b.x, b.y, 0, scale, scale, ox, oy)
         end
-    else
-        -- Fallback если текстура не создалась
-        for _, b in ipairs(bullets.list) do
-            love.graphics.circle("fill", b.x, b.y, b.radius * 2.5)
-        end
+        love.graphics.draw(bullets.glowBatch)
     end
     
     -- 2. Основное тело пули
+    if bullets.texture and bullets.batch then
+        local w = bullets.texture:getWidth()
+        local h = bullets.texture:getHeight()
+        local ox, oy = w / 2, h / 2
+        
+        for _, b in ipairs(bullets.list) do
+            local scale = (b.radius * 2) / w
+            bullets.batch:add(b.x, b.y, 0, scale, scale, ox, oy)
+        end
+    end
+
+    -- Отрисовка основного слоя
     love.graphics.setBlendMode("alpha")
     love.graphics.setColor(1, 1, 1, 1)
-    for _, b in ipairs(bullets.list) do
-        if bullets.texture then
-            local w = bullets.texture:getWidth()
-            local h = bullets.texture:getHeight()
-            local scale = (b.radius * 2) / w -- Масштабируем картинку ровно под размер хитбокса
-            love.graphics.draw(bullets.texture, b.x, b.y, 0, scale, scale, w / 2, h / 2)
-        else
+    
+    if bullets.batch then
+        love.graphics.draw(bullets.batch)
+    else
+        -- Fallback (если текстуры нет)
+        for _, b in ipairs(bullets.list) do
             love.graphics.circle("fill", b.x, b.y, b.radius)
         end
     end

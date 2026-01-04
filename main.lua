@@ -97,9 +97,21 @@ end
 
 -- Загрузка конфига игры (для bullet settings)
 local function load_game_config()
-    if not love.filesystem.getInfo("config.txt") then return end
-    local contents = love.filesystem.read("config.txt")
-    print("[CONFIG] Loading config.txt...")
+    local contents = nil
+    if love.filesystem.getInfo("config.txt") then
+        contents = love.filesystem.read("config.txt")
+        print("[CONFIG] Loading config.txt from save directory...")
+    else
+        local f = io.open("config.txt", "r")
+        if f then
+            contents = f:read("*all")
+            f:close()
+            print("[CONFIG] Loading config.txt from local file...")
+        end
+    end
+    
+    if not contents then return end
+
     for line in contents:gmatch("[^\r\n]+") do
         local key, value = line:match("^([%w_]+)%s*=%s*([%w_%.]+)")
         if key and value then
@@ -1212,4 +1224,8 @@ function love.mousemoved(x, y)
             end
         end
     end
+end
+
+function love.quit()
+    save_game_config()
 end
