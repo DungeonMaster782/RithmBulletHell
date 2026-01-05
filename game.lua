@@ -1,6 +1,7 @@
 local player = require("player")
 local bullets = require("bullets")
 local lasers = require("lasers")
+local enemies = require("enemies")
 
 local game = {}
 local hitObjects = {}
@@ -177,6 +178,7 @@ function game.load_custom(folder_name, settings)
     print("[GAME] Loading custom map: " .. folder_name)
     
     apply_settings(settings)
+    enemies.load()
     
     -- Сброс масштабирования для кастомных карт (они используют абсолютные координаты)
     scaleX, scaleY = 1, 1
@@ -200,7 +202,7 @@ function game.load_custom(folder_name, settings)
                         x = obj.x,
                         y = obj.y,
                         time = (obj.time * 1000), -- Переводим секунды в мс (как в osu)
-                        type = obj.type or "circle",
+                        type = obj.type or "circle", -- circle, slider, enemy
                         preempt = 1200, -- Стандартное время предупреждения
                         exploded = false,
                         shown = false
@@ -248,6 +250,7 @@ end
 function game.load(song, difficulty, bg_image, settings)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
     apply_settings(settings)
+    enemies.load()
     print("[GAME] Config: Multiplier=" .. config.bullet_multiplier .. ", Speed=" .. config.bullet_speed .. ", Size=" .. config.bullet_size .. ", PlayerSpeed=" .. (config.player_speed or 1.0))
 
     local map_path = "maps/" .. song .. "/" .. difficulty
@@ -378,6 +381,7 @@ function game.update(dt)
     end
 
     if particleSystem then particleSystem:update(dt) end
+    enemies.update(dt, player.shots)
 
     -- Проверка на смерть
     if player.dead then
@@ -406,7 +410,13 @@ function game.update(dt)
             local translated_x = (obj.x * scaleX) + offsetX
             local translated_y = (obj.y * scaleY) + offsetY
             
-            if obj.type == "slider" then
+            if obj.type == "enemy" then
+                if not obj.shown and currentTime >= obj.time then
+                    obj.shown = true
+                    obj.exploded = true
+                    enemies.spawn(translated_x, translated_y)
+                end
+            elseif obj.type == "slider" then
                 local translated_endX = (obj.endX * scaleX) + offsetX
                 local translated_endY = (obj.endY * scaleY) + offsetY
                 
@@ -522,6 +532,7 @@ function game.draw()
     end
 
     player.draw()
+    enemies.draw()
     love.graphics.setColor(1, 1, 1, 1)
 
     -- Отрисовка частиц (с режимом сложения для свечения)

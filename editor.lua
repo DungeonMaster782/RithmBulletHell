@@ -10,6 +10,7 @@ local isPlaying = false
 local waitingForAudio = false
 local gridSize = 32 -- Размер сетки
 local playbackSpeed = 1.0 -- Скорость воспроизведения
+local placementMode = "circle" -- "circle" or "enemy"
 
 -- Helper for directory creation (local + save dir)
 local function ensure_dir(path)
@@ -33,6 +34,7 @@ function editor.load(folder_name)
     music = nil
     waitingForAudio = false
     playbackSpeed = 1.0
+    placementMode = "circle"
     
     local dir = "Mmaps/" .. folder_name
     ensure_dir("Mmaps")
@@ -172,7 +174,7 @@ function editor.draw()
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("EDITOR: " .. map_name, 10, 10)
     love.graphics.print("Time: " .. string.format("%.2f", currentTime) .. " / " .. string.format("%.2f", duration), 10, 30)
-    love.graphics.print("[Space] Play | [+/-] Speed (" .. playbackSpeed .. "x) | [G] Grid (" .. gridSize .. ") | [RMB] Delete | [S] Save", 10, 50)
+    love.graphics.print("[Space] Play | [+/-] Speed (" .. playbackSpeed .. "x) | [G] Grid | [E] Mode: " .. string.upper(placementMode) .. " | [S] Save", 10, 50)
     
     -- Кнопка сохранения
     local btnX = w - 120
@@ -196,10 +198,17 @@ function editor.draw()
             
             love.graphics.setColor(1, 1, 1, alpha)
             
-            -- Круг объекта (Hit Circle)
-            love.graphics.setLineWidth(2)
-            love.graphics.circle("line", obj.x, obj.y, 30)
-            love.graphics.print(i, obj.x - 5, obj.y - 10)
+            if obj.type == "enemy" then
+                -- Отрисовка врага в редакторе
+                love.graphics.setColor(1, 0.2, 0.2, alpha)
+                love.graphics.rectangle("line", obj.x - 20, obj.y - 20, 40, 40)
+                love.graphics.print("ENEMY", obj.x - 20, obj.y - 35)
+            else
+                -- Круг объекта (Hit Circle)
+                love.graphics.setLineWidth(2)
+                love.graphics.circle("line", obj.x, obj.y, 30)
+                love.graphics.print(i, obj.x - 5, obj.y - 10)
+            end
             
             -- Круг приближения (Approach Circle)
             if dt > 0 then
@@ -275,7 +284,7 @@ function editor.mousepressed(x, y, button)
             x = snapX, 
             y = snapY, 
             time = currentTime,
-            type = "circle"
+            type = placementMode
         })
         editor.notify("Placed object at " .. string.format("%.2f", currentTime) .. "s")
     elseif button == 2 then
@@ -342,6 +351,9 @@ function editor.keypressed(key)
         elseif gridSize == 16 then gridSize = 8
         else gridSize = 32 end
         editor.notify("Grid size: " .. gridSize)
+    elseif key == "e" then
+        placementMode = (placementMode == "circle") and "enemy" or "circle"
+        editor.notify("Mode: " .. string.upper(placementMode))
     end
 end
 
