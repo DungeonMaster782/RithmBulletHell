@@ -76,6 +76,7 @@ function editor.loadMusic(dir)
         
         if status then
             music = result
+            if settings then music:setVolume(settings.music_volume) end
             duration = music:getDuration()
             editor.notify("Music loaded (Stream): " .. name)
             return true
@@ -88,6 +89,7 @@ function editor.loadMusic(dir)
         
         if status then
             music = result
+            if settings then music:setVolume(settings.music_volume) end
             duration = music:getDuration()
             editor.notify("Music loaded (Static): " .. name)
             return true

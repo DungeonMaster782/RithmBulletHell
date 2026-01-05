@@ -19,8 +19,8 @@ function enemies.spawn(x, y, duration)
         state = "entering", -- entering, attacking, leaving
         timer = 0,
         duration = duration or 5.0,
-        hp = 20,
-        maxHp = 20,
+        hp = 5,
+        maxHp = 5,
         shootTimer = 0
     })
 end

@@ -680,8 +680,6 @@ function game.keypressed(key)
             if music then music:pause() end
             if backgroundVideo then backgroundVideo:pause() end
             menu_selection = 1
-        elseif key == "space" then
-            player.shoot()
         elseif key == "lctrl" or key == "rctrl" then
             player.attemptDash()
         elseif (key == player.controls.up or key == player.controls.down or 

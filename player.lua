@@ -121,6 +121,11 @@ function player.update(dt)
         if love.keyboard.isDown(player.controls.left) then player.x = player.x - currentSpeed * dt end
         if love.keyboard.isDown(player.controls.right) then player.x = player.x + currentSpeed * dt end
     end
+    
+    -- Стрельба (зажатие)
+    if love.keyboard.isDown("space") or love.keyboard.isDown("x") then
+        player.shoot()
+    end
 
     -- Ограничение выхода за границы экрана
     if player.screenWidth and player.screenHeight then
@@ -237,7 +242,7 @@ end
 function player.shoot()
     if player.shotCooldown <= 0 then
         table.insert(player.shots, {x = player.x, y = player.y - player.radius, speed = 400})
-        player.shotCooldown = 0.2 -- 0.2 сек между выстрелами
+        player.shotCooldown = 0.08 -- Быстрая стрельба
     end
 end
 
