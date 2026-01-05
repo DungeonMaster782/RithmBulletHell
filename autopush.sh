@@ -1,9 +1,4 @@
 #!/bin/bash
-
-VERSION="1.4.1"
-
 git add .
-git commit -m "chore: alpha v$VERSION"
-git tag v$VERSION
+git commit -m "Alpha V1.4.1.1"
 git push
-git push --tags
