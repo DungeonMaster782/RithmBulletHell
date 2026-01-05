@@ -19,7 +19,7 @@ local function ensure_dir(path)
     end
     local cmd
     if love.system.getOS() == "Windows" then
-        cmd = 'mkdir "' .. path:gsub("/", "\\") .. '" 2>nul'
+        cmd = 'if not exist "' .. path:gsub("/", "\\") .. '" mkdir "' .. path:gsub("/", "\\") .. '"'
     else
         cmd = 'mkdir -p "' .. path .. '"'
     end
@@ -62,6 +62,7 @@ function editor.load(folder_name)
     else
         editor.notify("Editing: " .. map_name)
     end
+    print("Save Directory (Hidden Maps): " .. love.filesystem.getSaveDirectory())
 end
 
 function editor.loadMusic(dir)
@@ -203,8 +204,9 @@ function editor.draw()
             if obj.type == "enemy" then
                 -- Отрисовка врага в редакторе
                 love.graphics.setColor(1, 0.2, 0.2, alpha)
-                love.graphics.rectangle("line", obj.x - 20, obj.y - 20, 40, 40)
-                love.graphics.print("ENEMY", obj.x - 20, obj.y - 35)
+                love.graphics.circle("line", obj.x, obj.y, 40)
+                love.graphics.print("ENEMY", obj.x - 20, obj.y - 50)
+                love.graphics.circle("fill", obj.x, obj.y, 5)
             else
                 -- Круг объекта (Hit Circle)
                 love.graphics.setLineWidth(2)
@@ -378,6 +380,7 @@ function editor.save()
     
     editor.notify("Saved to " .. path)
     print("Saved map to " .. path)
+    print("Full path: " .. love.filesystem.getSaveDirectory() .. "/" .. path)
 end
 
 function editor.filedropped(file)

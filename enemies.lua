@@ -79,7 +79,7 @@ function enemies.update(dt, player_shots)
     end
 end
 
-function enemies.draw()
+function enemies.draw(showHitbox)
     love.graphics.setColor(1, 1, 1, 1)
     for _, e in ipairs(list) do
         if img then
@@ -98,6 +98,12 @@ function enemies.draw()
         love.graphics.setColor(0, 1, 0)
         love.graphics.rectangle("fill", e.visualX - 30, e.visualY - 50, 60 * hpPct, 6)
         love.graphics.setColor(1, 1, 1)
+        
+        -- Хитбокс
+        if showHitbox then
+            love.graphics.setColor(1, 0, 0, 0.8)
+            love.graphics.circle("line", e.visualX, e.visualY, 40) -- Радиус коллизии
+        end
     end
 end
 

@@ -532,7 +532,7 @@ function game.draw()
     end
 
     player.draw()
-    enemies.draw()
+    enemies.draw(player.showHitbox)
     love.graphics.setColor(1, 1, 1, 1)
 
     -- Отрисовка частиц (с режимом сложения для свечения)
@@ -586,6 +586,12 @@ function game.draw()
                 love.graphics.circle("line", tx, ty, current_radius)
                 love.graphics.setColor(1, 1, 1, 0.2) -- Слабая точка в центре
                 love.graphics.circle("fill", tx, ty, 5)
+                
+                -- Отрисовка хитбокса круга (спаунера)
+                if player.showHitbox then
+                    love.graphics.setColor(1, 0, 0, 0.5)
+                    love.graphics.circle("line", tx, ty, 30 * math.min(scaleX, scaleY))
+                end
             end
         end
     end
