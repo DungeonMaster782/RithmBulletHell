@@ -35,6 +35,7 @@ function editor.load(folder_name)
     playbackSpeed = 1.0
     
     local dir = "Mmaps/" .. folder_name
+    ensure_dir("Mmaps")
     ensure_dir(dir)
     
     -- Загрузка данных карты

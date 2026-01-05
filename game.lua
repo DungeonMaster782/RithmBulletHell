@@ -29,6 +29,7 @@ local showVideo = true
 local pauseTime = 0 -- Время начала паузы
 local videoUnsupported = false -- Флаг для отображения предупреждения
 local videoOffset = 0 -- Смещение видео (из .osu файла)
+local lastObjectTime = 0 -- Время окончания последнего объекта
 
 
 -- ======= .OSU PARSER =======
@@ -186,6 +187,9 @@ function game.load_custom(folder_name, settings)
     local path = dir .. "/map.lua"
     hitObjects = {} -- Очищаем старые объекты
     
+    local firstObjectTime = math.huge
+    lastObjectTime = 0
+    
     if love.filesystem.getInfo(path) then
         local chunk = love.filesystem.load(path)
         if chunk then
@@ -201,6 +205,10 @@ function game.load_custom(folder_name, settings)
                         exploded = false,
                         shown = false
                     })
+                    
+                    if obj.time * 1000 < firstObjectTime then firstObjectTime = obj.time * 1000 end
+                    local endTime = obj.time * 1000
+                    if endTime > lastObjectTime then lastObjectTime = endTime end
                 end
             end
             print("[GAME] Loaded " .. #hitObjects .. " objects")
@@ -225,6 +233,15 @@ function game.load_custom(folder_name, settings)
     reset_state()
     player.load(love.graphics.getWidth(), love.graphics.getHeight())
     mapStartTime = love.timer.getTime()
+    
+    -- Пропуск интро (5 секунд до первого объекта)
+    if firstObjectTime ~= math.huge then
+        local skipTime = math.max(0, firstObjectTime - 5000)
+        if skipTime > 0 then
+            if music then music:seek(skipTime / 1000) end
+            mapStartTime = mapStartTime - (skipTime / 1000)
+        end
+    end
 end
 
 -- ======= GAME FUNCTIONS =======
@@ -244,10 +261,17 @@ function game.load(song, difficulty, bg_image, settings)
     hitObjects, approachRate, audio_name, video_name, videoOffset = parse_osu(map_path)
     preempt = calc_preempt(approachRate)
 
-    -- Ensure hit objects use the AR-based preempt, not the default value captured during parsing
+    -- Расчет времени начала и конца, обновление preempt
+    local firstObjectTime = math.huge
+    lastObjectTime = 0
+    
     if hitObjects then
         for _, obj in ipairs(hitObjects) do
             obj.preempt = preempt
+            if obj.time < firstObjectTime then firstObjectTime = obj.time end
+            local endTime = obj.time
+            if obj.type == "slider" then endTime = obj.time + (obj.duration or 0) end
+            if endTime > lastObjectTime then lastObjectTime = endTime end
         end
     end
 
@@ -324,6 +348,21 @@ function game.load(song, difficulty, bg_image, settings)
     end
 
     mapStartTime = love.timer.getTime()
+    
+    -- Пропуск интро (5 секунд до первого объекта)
+    if firstObjectTime ~= math.huge then
+        local skipTime = math.max(0, firstObjectTime - 5000)
+        if skipTime > 0 then
+            if music then music:seek(skipTime / 1000) end
+            mapStartTime = mapStartTime - (skipTime / 1000)
+            
+            if backgroundVideo then
+                local vidPos = (skipTime - videoOffset) / 1000
+                if vidPos > 0 then backgroundVideo:seek(vidPos) end
+            end
+            print("[GAME] Skipped intro: " .. skipTime .. "ms")
+        end
+    end
 end
 
 function game.update(dt)
@@ -431,7 +470,7 @@ function game.update(dt)
     end
 
     -- Проверка на победу (все объекты показаны, пуль нет, музыка закончилась)
-    if #hitObjects == 0 and (not music or not music:isPlaying()) and not player.dead then
+    if #hitObjects == 0 and currentTime >= lastObjectTime + 3000 and not player.dead then
         -- Небольшая задержка перед победой, чтобы убедиться
         print("[GAME] Victory condition met!")
         state = "victory"

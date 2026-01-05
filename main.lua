@@ -6,6 +6,7 @@ local selected_index = 1
 local mode = "main_menu" -- main_menu, osu_menu, difficulties, settings, gameplay
 local selected_song = nil
 local selected_difficulty = nil
+local selected_custom_map = nil
 local font
 
 game = nil -- Глобальная переменная, чтобы консоль ее видела
@@ -725,7 +726,11 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                             end
                                                                                                                                                                                                                                     elseif status == "restart" then
                                                                                                                                                                                                                                         -- Перезапуск с теми же параметрами
-                                                                                                                                                                                                                                        game.load(selected_song, selected_difficulty, settings.lives, settings.controls_modes[settings.controls_index], backgrounds[selected_song], settings.music_volume, settings.bullet_multiplier, settings.bullet_speed, settings.bullet_size, settings.player_speed, settings.show_hitboxes, settings.background_dim, settings.show_video)
+                                                                                                                                                                                                                                        if selected_custom_map then
+                                                                                                                                                                                                                                            game.load_custom(selected_custom_map, settings)
+                                                                                                                                                                                                                                        else
+                                                                                                                                                                                                                                            game.load(selected_song, selected_difficulty, backgrounds[selected_song], settings)
+                                                                                                                                                                                                                                        end
                                                                                                                                                                                                                                             end
                                                                                                                                                                                                                                             end
     
@@ -839,6 +844,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                 selected_index = math.min(#difficulties, selected_index + 1)
                                                                                                                                                                                                                                                                 elseif key == "return" then
                                                                                                                                                                                                                                                                 selected_difficulty = difficulties[selected_index]
+                                                                                                                                                                                                                                                               selected_custom_map = nil
 
                                                                                                                                                                                                                                                                 -- *** ИСПРАВЛЕНИЕ: ОСТАНОВКА МУЗЫКИ МЕНЮ ***
                                                                                                                                                                                                                                                                 if menu_music and menu_music:isPlaying() then
@@ -894,6 +900,9 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                             selected_index = math.min(#custom_maps, selected_index + 1)
                                                                                                                                                                                                                                                                         elseif key == "return" then
                                                                                                                                                                                                                                                                             local map_file = custom_maps[selected_index]
+                                                                                                                                                                                                                                                                           selected_custom_map = map_file
+                                                                                                                                                                                                                                                                           selected_song = nil
+                                                                                                                                                                                                                                                                           selected_difficulty = nil
                                                                                                                                                                                                                                                                             if menu_music and menu_music:isPlaying() then menu_music:stop() end
                                                                                                                                                                                                                                                                             game = require("game")
                                                                                                                                                                                                                                                                             game.load_custom(map_file, settings)
@@ -969,7 +978,11 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                         if new_video ~= nil then settings.show_video = new_video end
                                                                                                                                                                                                                                         save_game_config()
                                                                                                                                                                                                                                     end
-                                                                                                                                        game.load(selected_song, selected_difficulty, backgrounds[selected_song], settings)
+                                                                                                                                                                                                                                    if selected_custom_map then
+                                                                                                                                                                                                                                        game.load_custom(selected_custom_map, settings)
+                                                                                                                                                                                                                                    else
+                                                                                                                                                                                                                                        game.load(selected_song, selected_difficulty, backgrounds[selected_song], settings)
+                                                                                                                                                                                                                                    end
                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
@@ -1057,7 +1070,11 @@ function love.mousepressed(x, y, button)
                 if new_video ~= nil then settings.show_video = new_video end
                 save_game_config()
             end
-            game.load(selected_song, selected_difficulty, backgrounds[selected_song], settings)
+            if selected_custom_map then
+                game.load_custom(selected_custom_map, settings)
+            else
+                game.load(selected_song, selected_difficulty, backgrounds[selected_song], settings)
+            end
         end
         return
     end
