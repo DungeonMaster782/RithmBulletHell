@@ -144,6 +144,12 @@ local function apply_settings(settings)
         player.showHitbox = settings.show_hitboxes
         bullets.showHitbox = settings.show_hitboxes
     end
+
+    player.maxDashCharges = settings.max_dash_charges
+    player.dashRechargeTime = settings.dash_recharge_time
+    player.dashDuration = settings.dash_duration
+    player.hitboxRadius = settings.hitbox_radius
+    player.invulnDuration = settings.invuln_time
 end
 
 local function reset_state()

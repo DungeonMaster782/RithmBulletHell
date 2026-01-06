@@ -53,7 +53,12 @@ settings = { -- Глобальная переменная, чтобы консо
     show_video = true,
     max_fps = 0, -- 0 = Unlimited
     max_fps_options = {30, 60, 120, 144, 240, 0},
-    max_fps_index = 6
+    max_fps_index = 6,
+    max_dash_charges = 3,
+    dash_recharge_time = 3.0,
+    dash_duration = 0.5,
+    hitbox_radius = 6,
+    invuln_time = 3.0
 }
 local temp_settings = {}
 local settings_options = {"Music Volume", "Background Dim", "Show Video", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "Show Hitboxes", "VSync", "Max FPS", "Save", "Back"}
@@ -93,7 +98,17 @@ local function apply_video_settings()
     end
 
     print("[VIDEO] Applying settings: " .. r[1] .. "x" .. r[2] .. " (" .. fs_mode .. ") VSync: " .. tostring(settings.vsync))
-    love.window.setMode(r[1], r[2], flags)
+    
+    local w, h = r[1], r[2]
+    -- Коррекция размера окна для HighDPI (чтобы окно не становилось огромным при масштабе > 100%)
+    if not flags.fullscreen then
+        local scale = love.window.getDPIScale()
+        if scale > 1 then
+            w = w / scale
+            h = h / scale
+        end
+    end
+    love.window.setMode(w, h, flags)
 end
 
 -- Загрузка конфига игры (для bullet settings)
@@ -139,6 +154,11 @@ local function load_game_config()
                     if v == n then settings.max_fps_index = i break end
                 end
             end
+            if key == "max_dash_charges" then settings.max_dash_charges = n end
+            if key == "dash_recharge_time" then settings.dash_recharge_time = n end
+            if key == "dash_duration" then settings.dash_duration = n end
+            if key == "hitbox_radius" then settings.hitbox_radius = n end
+            if key == "invuln_time" then settings.invuln_time = n end
         end
     end
 end
@@ -162,6 +182,11 @@ local function save_game_config()
     table.insert(lines, "background_dim=" .. string.format("%.2f", settings.background_dim))
     table.insert(lines, "show_video=" .. tostring(settings.show_video))
     table.insert(lines, "max_fps=" .. settings.max_fps)
+    table.insert(lines, "max_dash_charges=" .. settings.max_dash_charges)
+    table.insert(lines, "dash_recharge_time=" .. string.format("%.1f", settings.dash_recharge_time))
+    table.insert(lines, "dash_duration=" .. string.format("%.2f", settings.dash_duration))
+    table.insert(lines, "hitbox_radius=" .. string.format("%.1f", settings.hitbox_radius))
+    table.insert(lines, "invuln_time=" .. string.format("%.1f", settings.invuln_time))
     
     local content = table.concat(lines, "\n")
 
@@ -794,7 +819,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
             temp_settings.bullet_size = settings.bullet_size
             temp_settings.player_speed = settings.player_speed
             temp_settings.show_fps = settings.show_fps
-            temp_settings.show_hitbox = settings.show_hitbox
+            temp_settings.show_hitboxes = settings.show_hitboxes
             temp_settings.vsync = settings.vsync
             temp_settings.max_fps = settings.max_fps
             temp_settings.background_dim = settings.background_dim

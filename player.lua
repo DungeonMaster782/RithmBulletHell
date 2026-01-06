@@ -20,6 +20,7 @@ local player = {
     lives = 3,
     invuln = false,
     invuln_timer = 0,
+    invulnDuration = 3,
     dead = false,
     shots = {},        -- список пуль
     shotCooldown = 0,   -- задержка между выстрелами
@@ -62,7 +63,7 @@ function player.load(screenWidth, screenHeight)
         player.screenHeight = screenHeight
     end
     -- Сброс состояния деша при загрузке
-    player.dashCharges = 3
+    player.dashCharges = player.maxDashCharges
     player.dashRechargeTimer = 0
     player.isDashing = false
     player.score = 0
@@ -256,7 +257,7 @@ function player.hit()
     if not player.invuln then
         player.lives = player.lives - 1
         player.invuln = true
-        player.invuln_timer = 3 -- 3 сек неуязвимости
+        player.invuln_timer = player.invulnDuration -- сек неуязвимости
         print("[PLAYER] Hit! Lives left: " .. player.lives)
         if player.lives <= 0 then
             print("[PLAYER] No lives left.")
