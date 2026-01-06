@@ -123,7 +123,7 @@ function player.update(dt)
     end
     
     -- Стрельба (зажатие)
-    if love.keyboard.isDown("space") or love.keyboard.isDown("x") then
+    if love.keyboard.isDown("return") or love.keyboard.isDown("z") then
         player.shoot()
     end
 
@@ -212,7 +212,7 @@ function player.drawHitbox()
         return
     end
 
-    if player.hitboxTexture then
+    if (player.focusActive or player.showHitbox) and player.hitboxTexture then
         love.graphics.setColor(1, 1, 1, 1)
         local w = player.hitboxTexture:getWidth()
         local h = player.hitboxTexture:getHeight()
@@ -220,7 +220,7 @@ function player.drawHitbox()
         -- Множитель 8 увеличивает визуальный размер текстуры, так как она казалась слишком маленькой
         local scale = (player.hitboxRadius * 26) / w
         love.graphics.draw(player.hitboxTexture, player.x, player.y, -player.focusRotation, scale, scale, w / 2, h / 2)
-    else
+    elseif player.showHitbox then
         love.graphics.setColor(1, 0, 0, 1)
         local r = player.hitboxRadius
         love.graphics.polygon("fill", player.x, player.y - r, player.x + r, player.y, player.x, player.y + r, player.x - r, player.y)

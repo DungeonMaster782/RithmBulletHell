@@ -4,5 +4,6 @@ function love.conf(t)
     t.window.height = 720
     t.window.highdpi = true -- Исправляет проблемы с масштабированием > 100%
     t.identity = "RithmBulletHell" -- Папка сохранения в AppData
-    t.console = true
+    t.console = false
+    t.window.vsync = false -- Let the game settings control VSync
 end

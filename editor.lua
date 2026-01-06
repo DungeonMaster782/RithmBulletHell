@@ -372,6 +372,16 @@ function editor.save()
     love.filesystem.write(path, str)
     
     -- Дублируем сохранение в локальную папку игры (через io), чтобы файлы были доступны пользователю
+    -- Сначала убедимся, что папка существует локально
+    local os_dir = "Mmaps/" .. map_name
+    local cmd
+    if love.system.getOS() == "Windows" then
+        cmd = 'if not exist "' .. os_dir:gsub("/", "\\") .. '" mkdir "' .. os_dir:gsub("/", "\\") .. '"'
+    else
+        cmd = 'mkdir -p "' .. os_dir .. '"'
+    end
+    os.execute(cmd)
+
     local f = io.open(path, "w")
     if f then
         f:write(str)

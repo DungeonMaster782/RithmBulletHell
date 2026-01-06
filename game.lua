@@ -177,6 +177,9 @@ end
 function game.load_custom(folder_name, settings)
     print("[GAME] Loading custom map: " .. folder_name)
     
+    if music then music:stop() end
+    if backgroundVideo then backgroundVideo:pause() end
+
     apply_settings(settings)
     enemies.load()
     
@@ -250,6 +253,9 @@ end
 function game.load(song, difficulty, bg_image, settings)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
     apply_settings(settings)
+    if music then music:stop() end
+    if backgroundVideo then backgroundVideo:pause() end
+
     enemies.load()
     print("[GAME] Config: Multiplier=" .. config.bullet_multiplier .. ", Speed=" .. config.bullet_speed .. ", Size=" .. config.bullet_size .. ", PlayerSpeed=" .. (config.player_speed or 1.0))
 
@@ -285,16 +291,16 @@ function game.load(song, difficulty, bg_image, settings)
     local love_width = love.graphics.getWidth()
     local love_height = love.graphics.getHeight()
 
-    scaleX = love_width / 640 -- 640 - ширина игрового поля (512 + 50*2 + запас)
-    scaleY = love_height / 480 -- 480 - высота игрового поля (384 + 50*2 + запас)
-
-    -- Выбираем меньший масштаб, чтобы не выходить за границы
-    local uniform_scale = math.min(scaleX, scaleY)
-
-    scaleX = uniform_scale * (love_width / 800) -- Коррекция для центровки
-    scaleY = uniform_scale * (love_height / 600) -- Коррекция для центровки
-    offsetX = 50
-    offsetY = 50
+    -- Используем виртуальное разрешение 640x480 (osu поле 512x384 + отступы)
+    local target_w, target_h = 640, 480
+    local scale = math.min(love_width / target_w, love_height / target_h)
+    
+    scaleX = scale
+    scaleY = scale
+    
+    -- Центрируем игровое поле (512x384) на экране
+    offsetX = (love_width - 512 * scale) / 2
+    offsetY = (love_height - 384 * scale) / 2
 
     reset_state()
 

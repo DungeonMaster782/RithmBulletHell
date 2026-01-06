@@ -101,7 +101,9 @@ function enemies.draw(showHitbox)
         
         -- Хитбокс
         if showHitbox then
-            love.graphics.setColor(1, 0, 0, 0.8)
+            love.graphics.setColor(1, 0, 0, 0.4)
+            love.graphics.circle("fill", e.visualX, e.visualY, 40)
+            love.graphics.setColor(1, 0, 0, 1)
             love.graphics.circle("line", e.visualX, e.visualY, 40) -- Радиус коллизии
         end
     end
