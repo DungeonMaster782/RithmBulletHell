@@ -67,6 +67,11 @@ function player.load(screenWidth, screenHeight)
     player.isDashing = false
     player.score = 0
     player.grazeRadius = player.hitboxRadius * 2
+
+    player.dead = false
+    player.invuln = false
+    player.invuln_timer = 0
+    player.shots = {}
 end
 
 function player.update(dt)
