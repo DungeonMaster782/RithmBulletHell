@@ -840,4 +840,22 @@ function game.pause()
     end
 end
 
+function game.resize(w, h)
+    -- Пересчитываем масштаб игрового поля при изменении размера окна
+    local target_w, target_h = 640, 480
+    local scale = math.min(w / target_w, h / target_h)
+    
+    scaleX = scale
+    scaleY = scale
+    
+    -- Центрируем игровое поле (512x384) на экране
+    offsetX = (w - 512 * scale) / 2
+    offsetY = (h - 384 * scale) / 2
+    
+    if player then
+        player.screenWidth = w
+        player.screenHeight = h
+    end
+end
+
 return game

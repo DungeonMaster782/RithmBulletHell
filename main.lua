@@ -33,9 +33,12 @@ settings = { -- Глобальная переменная, чтобы консо
     music_volume = 0.5,
     resolution_index = 1,
     resolutions = {
+        {2560, 1440},
         {1920, 1080},
         {1600, 900},
-        {1280, 720}
+        {1366, 768},
+        {1280, 720},
+        {1024, 768}
     },
     fullscreen_mode_index = 1,
     fullscreen_modes = {"fullscreen", "windowed", "borderless"},
@@ -78,7 +81,13 @@ local menu_music_path = "res/sounds/menu_music.mp3" -- путь к mp3
 
 -- Функция для применения настроек видео
 local function apply_video_settings()
-    local r = settings.resolutions[settings.resolution_index]
+    local w, h
+    if settings.resolution_index == 0 then
+        w, h = love.graphics.getPixelWidth(), love.graphics.getPixelHeight()
+    else
+        local r = settings.resolutions[settings.resolution_index]
+        w, h = r[1], r[2]
+    end
     local fs_mode = settings.fullscreen_modes[settings.fullscreen_mode_index]
     
     local flags = {
@@ -97,15 +106,27 @@ local function apply_video_settings()
         flags.borderless = false
     end
 
-    print("[VIDEO] Applying settings: " .. r[1] .. "x" .. r[2] .. " (" .. fs_mode .. ") VSync: " .. tostring(settings.vsync))
+    print("[VIDEO] Applying settings: " .. w .. "x" .. h .. " (" .. fs_mode .. ") VSync: " .. tostring(settings.vsync))
     
-    local w, h = r[1], r[2]
     -- Коррекция размера окна для HighDPI (чтобы окно не становилось огромным при масштабе > 100%)
     if not flags.fullscreen then
         local scale = love.window.getDPIScale()
         if scale > 1 then
             w = w / scale
             h = h / scale
+        end
+        
+        -- Ограничение размера окна размерами рабочего стола (фикс для 125% масштаба)
+        local dw, dh = love.window.getDesktopDimensions()
+        if w > dw then
+            local ratio = h / w
+            w = dw
+            h = w * ratio
+        end
+        if h > dh then
+            local ratio = w / h
+            h = dh
+            w = h * ratio
         end
     end
     love.window.setMode(w, h, flags)
@@ -382,8 +403,12 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                             elseif option == "Show Video" then
                                                                                 value = temp_settings.show_video and "On" or "Off"
                                                                                 elseif option == "Resolution" then
-                local r = settings.resolutions[temp_settings.resolution_index]
-                                                                                    value = r[1].."x"..r[2]
+                if temp_settings.resolution_index == 0 then
+                    value = love.graphics.getPixelWidth() .. "x" .. love.graphics.getPixelHeight() .. " (Custom)"
+                else
+                    local r = settings.resolutions[temp_settings.resolution_index]
+                    value = r[1].."x"..r[2]
+                end
                                                                                     elseif option == "Window Mode" then
                 value = settings.fullscreen_modes[temp_settings.fullscreen_mode_index]
                                                                                         elseif option == "Lives" then
@@ -438,7 +463,11 @@ if love.filesystem.getInfo(main_menu_background_path) then
             settings.show_video = temp_settings.show_video -- Применяем сразу
                                                                                                             elseif settings_options[settings_selected_index] == "Resolution" then
             temp_settings.resolution_index = temp_settings.resolution_index - 1
-            if temp_settings.resolution_index < 1 then temp_settings.resolution_index = #settings.resolutions end
+            if temp_settings.resolution_index < 1 then 
+                temp_settings.resolution_index = #settings.resolutions 
+            elseif temp_settings.resolution_index == 0 then
+                temp_settings.resolution_index = #settings.resolutions
+            end
                                                                                                                 elseif settings_options[settings_selected_index] == "Window Mode" then
             temp_settings.fullscreen_mode_index = temp_settings.fullscreen_mode_index - 1
             if temp_settings.fullscreen_mode_index < 1 then temp_settings.fullscreen_mode_index = #settings.fullscreen_modes end
@@ -492,7 +521,11 @@ if love.filesystem.getInfo(main_menu_background_path) then
             settings.show_video = temp_settings.show_video -- Применяем сразу
                                                                                                                                 elseif settings_options[settings_selected_index] == "Resolution" then
             temp_settings.resolution_index = temp_settings.resolution_index + 1
-            if temp_settings.resolution_index > #settings.resolutions then temp_settings.resolution_index = 1 end
+            if temp_settings.resolution_index > #settings.resolutions then 
+                temp_settings.resolution_index = 1 
+            elseif temp_settings.resolution_index == 0 then
+                temp_settings.resolution_index = 1
+            end
                                                                                                                                     elseif settings_options[settings_selected_index] == "Window Mode" then
             temp_settings.fullscreen_mode_index = temp_settings.fullscreen_mode_index + 1
             if temp_settings.fullscreen_mode_index > #settings.fullscreen_modes then temp_settings.fullscreen_mode_index = 1 end
@@ -728,7 +761,13 @@ if love.filesystem.getInfo(main_menu_background_path) then
         next_time = next_time + 1.0 / settings.max_fps
         local cur_time = love.timer.getTime()
         if next_time > cur_time then
-            love.timer.sleep(next_time - cur_time)
+            local time_to_sleep = next_time - cur_time
+            -- Гибридное ожидание: sleep для разгрузки CPU, busy-wait для точности
+            if time_to_sleep > 0.002 then
+                love.timer.sleep(time_to_sleep - 0.001)
+            end
+            -- Точная доводка циклом (busy-wait)
+            while love.timer.getTime() < next_time do end
         else
             next_time = cur_time
                                                                                                                                                                                                                                     end
@@ -1269,6 +1308,32 @@ function love.mousemoved(x, y)
                 selected_index = i
             end
         end
+    end
+end
+
+function love.resize(w, h)
+    -- w и h здесь в логических единицах (points), но для сравнения с разрешениями нужны пиксели
+    local pw = love.graphics.getPixelWidth()
+    local ph = love.graphics.getPixelHeight()
+    
+    -- Обновляем игру
+    if game and game.resize then
+        game.resize(w, h)
+    end
+    
+    -- Проверяем, совпадает ли текущий размер с пресетами
+    local found = false
+    for i, r in ipairs(settings.resolutions) do
+        if r[1] == pw and r[2] == ph then
+            settings.resolution_index = i
+            if mode == "settings" then temp_settings.resolution_index = i end
+            found = true
+            break
+        end
+    end
+    if not found then
+        settings.resolution_index = 0 -- 0 = Custom
+        if mode == "settings" then temp_settings.resolution_index = 0 end
     end
 end
 
