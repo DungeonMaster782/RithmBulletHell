@@ -1,8 +1,8 @@
 return {
   objects = {
-    {x=608, y=416, time=0.000, type="circle"},
-    {x=1024, y=384, time=0.000, type="circle"},
-    {x=64, y=192, time=0.708, type="circle"},
+    {x=608, y=416, time=0.000, type="circle", custom_count=0, custom_speed=0},
+    {x=1024, y=384, time=0.000, type="circle", custom_count=0, custom_speed=0},
+    {x=64, y=192, time=0.708, type="circle", custom_count=0, custom_speed=0},
     {x=64, y=192, endX=160, endY=352, time=1.315, type="slider", duration=300},
     {x=160, y=192, endX=64, endY=352, time=1.315, type="slider", duration=300},
     {x=256, y=352, endX=384, endY=192, time=1.315, type="slider", duration=300},
@@ -28,5 +28,7 @@ return {
     {x=1184, y=160, endX=1184, endY=352, time=1.315, type="slider", duration=300},
     {x=1184, y=352, endX=1248, endY=160, time=1.315, type="slider", duration=300},
     {x=1248, y=160, endX=1248, endY=352, time=1.315, type="slider", duration=300},
+    {x=480, y=224, time=0.000, type="enemy", duration=10.5, hp=5, shootInterval=0.80, bulletCount=33, bulletSpeed=150},
+    {x=768, y=256, time=0.000, type="enemy", duration=5.0, hp=5, shootInterval=0.80, bulletCount=8, bulletSpeed=150},
   }
 }

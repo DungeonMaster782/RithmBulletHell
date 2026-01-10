@@ -14,6 +14,15 @@ local placementMode = "circle" -- "circle" or "enemy"
 local isPlacingLaser = false
 local laserStartX = 0
 local laserStartY = 0
+local preempt = 1.2 -- Время появления объектов (AR)
+
+-- Menu State
+local menu = {
+    active = false,
+    advanced = false,
+    obj = nil,
+    x = 0, y = 0, w = 220, h = 180
+}
 
 -- Helper: Distance from point to segment (для удаления лазеров)
 local function distToSegment(px, py, x1, y1, x2, y2)
@@ -27,30 +36,40 @@ local function distToSegment(px, py, x1, y1, x2, y2)
     return math.sqrt((px - cx)^2 + (py - cy)^2)
 end
 
-local function removeObjectAt(x, y)
+local function getObjectAt(x, y)
     local closestIndex = nil
     local minDist = 40 -- Радиус поиска (чуть больше радиуса круга)
     
     for i, obj in ipairs(objects) do
-        local dist = math.huge
-        if obj.type == "slider" then
-            dist = distToSegment(x, y, obj.x, obj.y, obj.endX or obj.x, obj.endY or obj.y)
-        else
-            dist = math.sqrt((obj.x - x)^2 + (obj.y - y)^2)
-        end
+        -- Проверяем видимость объекта (как в draw)
+        local dt = obj.time - currentTime
+        local isVisible = (dt > -0.2 and dt <= preempt)
         
-        if dist < minDist then
-            minDist = dist
-            closestIndex = i
+        if isVisible then
+            local dist = math.huge
+            if obj.type == "slider" then
+                dist = distToSegment(x, y, obj.x, obj.y, obj.endX or obj.x, obj.endY or obj.y)
+            else
+                dist = math.sqrt((obj.x - x)^2 + (obj.y - y)^2)
+            end
+            
+            if dist < minDist then
+                minDist = dist
+                closestIndex = i
+            end
         end
     end
     
-    if closestIndex then
-        table.remove(objects, closestIndex)
+    return closestIndex, objects[closestIndex]
+end
+
+local function removeObjectAt(x, y)
+    local idx, _ = getObjectAt(x, y)
+    if idx then
+        table.remove(objects, idx)
         editor.notify("Deleted object")
-        return true
+        if menu.active then menu.active = false end -- Close menu if deleted
     end
-    return false
 end
 
 -- Helper for directory creation (local + save dir)
@@ -77,6 +96,8 @@ function editor.load(folder_name)
     playbackSpeed = 1.0
     placementMode = "circle"
     isPlacingLaser = false
+    menu.active = false
+    menu.advanced = false
     
     local dir = "Mmaps/" .. folder_name
     ensure_dir("Mmaps")
@@ -230,8 +251,6 @@ function editor.draw()
     love.graphics.print("SAVE", btnX + 30, btnY + 5)
     
     -- Отрисовка объектов
-    local preempt = 1.2 -- Время появления (как AR в osu)
-    
     for i, obj in ipairs(objects) do
         local dt = obj.time - currentTime
         
@@ -287,6 +306,92 @@ function editor.draw()
         love.graphics.setLineWidth(2)
         love.graphics.line(laserStartX, laserStartY, snapX, snapY)
     end
+    
+    -- === ОТРИСОВКА МЕНЮ НАСТРОЕК ===
+    if menu.active and menu.obj then
+        local mx, my = menu.x, menu.y
+        
+        love.graphics.setColor(0, 0, 0, 0.9)
+        love.graphics.rectangle("fill", mx, my, menu.w, menu.h, 5, 5)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.rectangle("line", mx, my, menu.w, menu.h, 5, 5)
+        
+        love.graphics.print("SETTINGS: " .. string.upper(menu.obj.type), mx + 10, my + 10)
+        
+        local yOff = 40
+        local function drawProp(label, val, min, max, step, key)
+            love.graphics.print(label, mx + 10, my + yOff)
+            love.graphics.print("<", mx + 100, my + yOff)
+            love.graphics.print(string.format("%.1f", val):gsub("%.0", ""), mx + 120, my + yOff)
+            love.graphics.print(">", mx + 180, my + yOff)
+            
+            -- Hitboxes for buttons (simple logic in mousepressed, just visual here)
+            yOff = yOff + 30
+        end
+        
+        if menu.obj.type == "enemy" then
+            menu.obj.hp = menu.obj.hp or 5
+            menu.obj.duration = menu.obj.duration or 5.0
+            drawProp("HP", menu.obj.hp, 1, 100, 1, "hp")
+            drawProp("Duration", menu.obj.duration, 1, 20, 0.5, "duration")
+            
+            -- Кнопка ADVANCED
+            love.graphics.setColor(1, 1, 0)
+            love.graphics.print(menu.advanced and "[-] BASIC" or "[+] ADVANCED", mx + 50, my + yOff)
+            love.graphics.setColor(1, 1, 1)
+            yOff = yOff + 30
+            
+            if menu.advanced then
+                menu.obj.shootInterval = menu.obj.shootInterval or 0.8
+                menu.obj.bulletCount = menu.obj.bulletCount or 8
+                menu.obj.bulletSpeed = menu.obj.bulletSpeed or 150
+                drawProp("Rate (s)", menu.obj.shootInterval, 0.1, 5.0, 0.1, "shootInterval")
+                drawProp("Bullets", menu.obj.bulletCount, 1, 50, 1, "bulletCount")
+                drawProp("B.Speed", menu.obj.bulletSpeed, 50, 500, 10, "bulletSpeed")
+            end
+        elseif menu.obj.type == "slider" then
+            menu.obj.duration = menu.obj.duration or 300
+            drawProp("Duration", menu.obj.duration, 50, 2000, 50, "duration")
+        elseif menu.obj.type == "circle" then
+            menu.obj.custom_count = menu.obj.custom_count or 0
+            menu.obj.custom_speed = menu.obj.custom_speed or 0
+            
+            -- Кнопка ADVANCED для Circle
+            love.graphics.setColor(1, 1, 0)
+            love.graphics.print(menu.advanced and "[-] BASIC" or "[+] ADVANCED", mx + 50, my + yOff)
+            love.graphics.setColor(1, 1, 1)
+            yOff = yOff + 30
+            
+            if menu.advanced then
+                local cTxt = (menu.obj.custom_count == 0) and "Auto" or menu.obj.custom_count
+                love.graphics.print("Count", mx + 10, my + yOff)
+                love.graphics.print("<", mx + 100, my + yOff)
+                love.graphics.print(tostring(cTxt), mx + 120, my + yOff)
+                love.graphics.print(">", mx + 180, my + yOff)
+                yOff = yOff + 30
+                
+                local sTxt = (menu.obj.custom_speed == 0) and "Auto" or menu.obj.custom_speed
+                love.graphics.print("Speed", mx + 10, my + yOff)
+                love.graphics.print("<", mx + 100, my + yOff)
+                love.graphics.print(tostring(sTxt), mx + 120, my + yOff)
+                love.graphics.print(">", mx + 180, my + yOff)
+                yOff = yOff + 30
+            end
+        end
+        
+        -- Update menu height for next frame/click check
+        menu.h = yOff + 50
+
+        -- Delete Button
+        love.graphics.setColor(1, 0, 0, 1)
+        love.graphics.print("[ DELETE OBJECT ]", mx + 35, my + yOff + 10)
+        
+        -- Close Button (X)
+        love.graphics.setColor(1, 0, 0, 1)
+        love.graphics.print("X", mx + menu.w - 20, my + 5)
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+    -- ==============================
 
     love.graphics.setColor(1, 1, 1, 1)
     -- Уведомление
@@ -322,6 +427,93 @@ function editor.mousepressed(x, y, button)
     local h = love.graphics.getHeight()
     local barHeight = 30
     local w = love.graphics.getWidth()
+    
+    -- === ОБРАБОТКА КЛИКОВ В МЕНЮ ===
+    if menu.active and menu.obj then
+        local mx, my = menu.x, menu.y
+        -- Если клик внутри меню
+        if x >= mx and x <= mx + menu.w and y >= my and y <= my + menu.h then
+            -- Close (X)
+            if x >= mx + menu.w - 25 and y <= my + 25 then
+                menu.active = false
+                return
+            end
+            
+            -- Properties Logic
+            local yOff = 40
+            local function checkBtn(val, min, max, step)
+                if y >= my + yOff and y <= my + yOff + 20 then
+                    if x >= mx + 100 and x <= mx + 115 then -- Left (<)
+                        return math.max(min, val - step)
+                    elseif x >= mx + 180 and x <= mx + 195 then -- Right (>)
+                        return math.min(max, val + step)
+                    end
+                end
+                return val
+            end
+            
+            if menu.obj.type == "enemy" then
+                menu.obj.hp = checkBtn(menu.obj.hp, 1, 100, 1)
+                yOff = yOff + 30
+                menu.obj.duration = checkBtn(menu.obj.duration, 1, 20, 0.5)
+                yOff = yOff + 30
+                
+                -- Advanced Toggle Click
+                if y >= my + yOff and y <= my + yOff + 20 then
+                    menu.advanced = not menu.advanced
+                    return
+                end
+                yOff = yOff + 30
+                
+                if menu.advanced then
+                    menu.obj.shootInterval = checkBtn(menu.obj.shootInterval, 0.1, 5.0, 0.1)
+                    yOff = yOff + 30
+                    menu.obj.bulletCount = checkBtn(menu.obj.bulletCount, 1, 50, 1)
+                    yOff = yOff + 30
+                    menu.obj.bulletSpeed = checkBtn(menu.obj.bulletSpeed, 50, 500, 10)
+                end
+            elseif menu.obj.type == "slider" then
+                menu.obj.duration = checkBtn(menu.obj.duration, 50, 5000, 50)
+            elseif menu.obj.type == "circle" then
+                -- Advanced Toggle Click
+                if y >= my + yOff and y <= my + yOff + 20 then
+                    menu.advanced = not menu.advanced
+                    return
+                end
+                yOff = yOff + 30
+
+                if menu.advanced then
+                    -- Count
+                    local c = menu.obj.custom_count
+                    if y >= my + yOff and y <= my + yOff + 20 then
+                        if x >= mx + 100 and x <= mx + 115 then c = math.max(0, c - 1) end
+                        if x >= mx + 180 and x <= mx + 195 then c = c + 1 end
+                    end
+                    menu.obj.custom_count = c
+                    yOff = yOff + 30
+                    -- Speed
+                    local s = menu.obj.custom_speed
+                    if y >= my + yOff and y <= my + yOff + 20 then
+                        if x >= mx + 100 and x <= mx + 115 then s = math.max(0, s - 50) end
+                        if x >= mx + 180 and x <= mx + 195 then s = s + 50 end
+                    end
+                    menu.obj.custom_speed = s
+                    yOff = yOff + 30
+                end
+            end
+            
+            -- Delete Button (Dynamic Position)
+            if y >= my + yOff + 10 and y <= my + yOff + 30 then
+                removeObjectAt(menu.obj.x, menu.obj.y)
+                menu.active = false
+                return
+            end
+            return -- Consume click
+        else
+            menu.active = false -- Click outside closes menu
+            if button == 1 then return end -- Если левый клик мимо меню - просто закрываем его
+        end
+    end
     
     -- Клик по кнопке Save
     if x >= w - 120 and x <= w - 20 and y >= 10 and y <= 40 then
@@ -378,8 +570,14 @@ function editor.mousepressed(x, y, button)
             return
         end
         
-        -- Умное удаление: ищем объект под курсором
-        removeObjectAt(x, y)
+        -- Правый клик: Открыть меню настроек
+        local idx, obj = getObjectAt(x, y)
+        if obj then
+            menu.active = true
+            menu.advanced = false -- Reset advanced state on open
+            menu.obj = obj
+            menu.x, menu.y = x, y
+        end
     end
 end
 
@@ -445,8 +643,11 @@ function editor.save()
     for _, obj in ipairs(objects) do
         if obj.type == "slider" then
             str = str .. string.format("    {x=%d, y=%d, endX=%d, endY=%d, time=%.3f, type=%q, duration=%d},\n", obj.x, obj.y, obj.endX or obj.x, obj.endY or obj.y, obj.time, obj.type, obj.duration or 300)
+        elseif obj.type == "enemy" then
+            str = str .. string.format("    {x=%d, y=%d, time=%.3f, type=%q, duration=%.1f, hp=%d, shootInterval=%.2f, bulletCount=%d, bulletSpeed=%d},\n", 
+                obj.x, obj.y, obj.time, obj.type, obj.duration or 5, obj.hp or 5, obj.shootInterval or 0.8, obj.bulletCount or 8, obj.bulletSpeed or 150)
         else
-            str = str .. string.format("    {x=%d, y=%d, time=%.3f, type=%q},\n", obj.x, obj.y, obj.time, obj.type)
+            str = str .. string.format("    {x=%d, y=%d, time=%.3f, type=%q, custom_count=%d, custom_speed=%d},\n", obj.x, obj.y, obj.time, obj.type, obj.custom_count or 0, obj.custom_speed or 0)
         end
     end
     str = str .. "  }\n}"

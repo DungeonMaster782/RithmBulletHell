@@ -60,8 +60,14 @@ end
 
 function bullets.explode_circle(obj, config)
     local base_count = math.floor(360 / math.max(10, obj.preempt / 50))
+    if obj.custom_count and obj.custom_count > 0 then base_count = obj.custom_count end
+    
     local count = math.floor(base_count * config.bullet_multiplier)
-    local speed = math.max(100, 400 - obj.preempt) * config.bullet_speed
+    
+    local base_speed = math.max(100, 400 - obj.preempt)
+    if obj.custom_speed and obj.custom_speed > 0 then base_speed = obj.custom_speed end
+    
+    local speed = base_speed * config.bullet_speed
     local radius = 5 * (config.bullet_size or 1.0)
 
     print("[BULLETS] Boom! Spawning " .. count .. " bullets at (" .. math.floor(obj.x) .. ", " .. math.floor(obj.y) .. ")")

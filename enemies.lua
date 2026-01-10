@@ -10,7 +10,23 @@ function enemies.load()
     end
 end
 
-function enemies.spawn(x, y, duration)
+function enemies.spawn(x, y, props)
+    local duration = 5.0
+    local hp = 5
+    local shootInterval = 0.8
+    local bulletCount = 8
+    local bulletSpeed = 150
+    
+    if type(props) == "table" then
+        duration = props.duration or 5.0
+        hp = props.hp or 5
+        shootInterval = props.shootInterval or 0.8
+        bulletCount = props.bulletCount or 8
+        bulletSpeed = props.bulletSpeed or 150
+    elseif type(props) == "number" then
+        duration = props
+    end
+
     table.insert(list, {
         x = x,
         y = y,
@@ -18,10 +34,13 @@ function enemies.spawn(x, y, duration)
         visualY = -100, -- Появляется за пределами экрана сверху
         state = "entering", -- entering, attacking, leaving
         timer = 0,
-        duration = duration or 5.0,
-        hp = 5,
-        maxHp = 5,
-        shootTimer = 0
+        duration = duration,
+        hp = hp,
+        maxHp = hp,
+        shootTimer = 0,
+        shootInterval = shootInterval,
+        bulletCount = bulletCount,
+        bulletSpeed = bulletSpeed
     })
 end
 
@@ -40,9 +59,9 @@ function enemies.update(dt, player_shots)
             e.shootTimer = e.shootTimer + dt
             
             -- Стрельба
-            if e.shootTimer > 0.8 then
+            if e.shootTimer > e.shootInterval then
                 e.shootTimer = 0
-                bullets.spawn_ring(e.visualX, e.visualY, 8, 150, 5)
+                bullets.spawn_ring(e.visualX, e.visualY, e.bulletCount, e.bulletSpeed, 5)
             end
             
             if e.timer >= e.duration then

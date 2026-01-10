@@ -221,6 +221,15 @@ function game.load_custom(folder_name, settings)
                         newObj.endX = obj.endX or obj.x
                         newObj.endY = obj.endY or obj.y
                         newObj.duration = obj.duration or 300
+                    elseif newObj.type == "enemy" then
+                        newObj.duration = obj.duration
+                        newObj.hp = obj.hp
+                        newObj.shootInterval = obj.shootInterval
+                        newObj.bulletCount = obj.bulletCount
+                        newObj.bulletSpeed = obj.bulletSpeed
+                    elseif newObj.type == "circle" then
+                        newObj.custom_count = obj.custom_count
+                        newObj.custom_speed = obj.custom_speed
                     end
                     
                     table.insert(hitObjects, newObj)
@@ -434,7 +443,13 @@ function game.update(dt)
                 if not obj.shown and currentTime >= obj.time then
                     obj.shown = true
                     obj.exploded = true
-                    enemies.spawn(translated_x, translated_y)
+                    enemies.spawn(translated_x, translated_y, {
+                        duration=obj.duration, 
+                        hp=obj.hp,
+                        shootInterval=obj.shootInterval,
+                        bulletCount=obj.bulletCount,
+                        bulletSpeed=obj.bulletSpeed
+                    })
                 end
             elseif obj.type == "slider" then
                 local translated_endX = (obj.endX * scaleX) + offsetX
