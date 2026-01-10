@@ -11,6 +11,47 @@ local waitingForAudio = false
 local gridSize = 32 -- Размер сетки
 local playbackSpeed = 1.0 -- Скорость воспроизведения
 local placementMode = "circle" -- "circle" or "enemy"
+local isPlacingLaser = false
+local laserStartX = 0
+local laserStartY = 0
+
+-- Helper: Distance from point to segment (для удаления лазеров)
+local function distToSegment(px, py, x1, y1, x2, y2)
+    local dx, dy = x2 - x1, y2 - y1
+    if dx == 0 and dy == 0 then
+        return math.sqrt((px - x1)^2 + (py - y1)^2)
+    end
+    local t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+    t = math.max(0, math.min(1, t))
+    local cx, cy = x1 + t * dx, y1 + t * dy
+    return math.sqrt((px - cx)^2 + (py - cy)^2)
+end
+
+local function removeObjectAt(x, y)
+    local closestIndex = nil
+    local minDist = 40 -- Радиус поиска (чуть больше радиуса круга)
+    
+    for i, obj in ipairs(objects) do
+        local dist = math.huge
+        if obj.type == "slider" then
+            dist = distToSegment(x, y, obj.x, obj.y, obj.endX or obj.x, obj.endY or obj.y)
+        else
+            dist = math.sqrt((obj.x - x)^2 + (obj.y - y)^2)
+        end
+        
+        if dist < minDist then
+            minDist = dist
+            closestIndex = i
+        end
+    end
+    
+    if closestIndex then
+        table.remove(objects, closestIndex)
+        editor.notify("Deleted object")
+        return true
+    end
+    return false
+end
 
 -- Helper for directory creation (local + save dir)
 local function ensure_dir(path)
@@ -35,6 +76,7 @@ function editor.load(folder_name)
     waitingForAudio = false
     playbackSpeed = 1.0
     placementMode = "circle"
+    isPlacingLaser = false
     
     local dir = "Mmaps/" .. folder_name
     ensure_dir("Mmaps")
@@ -207,6 +249,15 @@ function editor.draw()
                 love.graphics.circle("line", obj.x, obj.y, 40)
                 love.graphics.print("ENEMY", obj.x - 20, obj.y - 50)
                 love.graphics.circle("fill", obj.x, obj.y, 5)
+            elseif obj.type == "slider" then
+                -- Отрисовка лазера
+                love.graphics.setColor(0.5, 0.8, 1, alpha)
+                love.graphics.setLineWidth(4)
+                love.graphics.line(obj.x, obj.y, obj.endX or obj.x, obj.endY or obj.y)
+                love.graphics.setLineWidth(2)
+                love.graphics.circle("line", obj.x, obj.y, 10)
+                love.graphics.circle("line", obj.endX or obj.x, obj.endY or obj.y, 10)
+                love.graphics.print("LASER", (obj.x + (obj.endX or obj.x))/2 - 20, (obj.y + (obj.endY or obj.y))/2 - 10)
             else
                 -- Круг объекта (Hit Circle)
                 love.graphics.setLineWidth(2)
@@ -225,6 +276,16 @@ function editor.draw()
                 love.graphics.circle("fill", obj.x, obj.y, 32)
             end
         end
+    end
+    
+    -- Отрисовка процесса создания лазера (превью линии)
+    if isPlacingLaser then
+        local mx, my = love.mouse.getPosition()
+        local snapX = math.floor(mx / gridSize + 0.5) * gridSize
+        local snapY = math.floor(my / gridSize + 0.5) * gridSize
+        love.graphics.setColor(0, 1, 1, 0.8)
+        love.graphics.setLineWidth(2)
+        love.graphics.line(laserStartX, laserStartY, snapX, snapY)
     end
 
     love.graphics.setColor(1, 1, 1, 1)
@@ -283,33 +344,42 @@ function editor.mousepressed(x, y, button)
     local snapY = math.floor(y / gridSize + 0.5) * gridSize
 
     if button == 1 then
-        -- Добавляем объект с текущим временем
-        table.insert(objects, {
-            x = snapX, 
-            y = snapY, 
-            time = currentTime,
-            type = placementMode
-        })
-        editor.notify("Placed object at " .. string.format("%.2f", currentTime) .. "s")
-    elseif button == 2 then
-        -- Умное удаление: ищем объект под курсором
-        local closestIndex = nil
-        local minDist = 40 -- Радиус поиска (чуть больше радиуса круга)
-        
-        for i, obj in ipairs(objects) do
-            local dx = obj.x - x
-            local dy = obj.y - y
-            local dist = math.sqrt(dx*dx + dy*dy)
-            if dist < minDist then
-                minDist = dist
-                closestIndex = i
+        if placementMode == "slider" then
+            if not isPlacingLaser then
+                -- Первый клик: начало лазера
+                isPlacingLaser = true
+                laserStartX = snapX
+                laserStartY = snapY
+                editor.notify("Laser Start Set. Click for End.")
+            else
+                -- Второй клик: конец лазера
+                table.insert(objects, {
+                    x = laserStartX,
+                    y = laserStartY,
+                    endX = snapX,
+                    endY = snapY,
+                    time = currentTime,
+                    type = "slider",
+                    duration = 300 -- Длительность по умолчанию
+                })
+                isPlacingLaser = false
+                editor.notify("Laser Placed at " .. string.format("%.2f", currentTime) .. "s")
             end
+        else
+            table.insert(objects, {
+                x = snapX, y = snapY, time = currentTime, type = placementMode
+            })
+            editor.notify("Placed " .. placementMode .. " at " .. string.format("%.2f", currentTime) .. "s")
+        end
+    elseif button == 2 then
+        if isPlacingLaser then
+            isPlacingLaser = false
+            editor.notify("Laser placement cancelled")
+            return
         end
         
-        if closestIndex then
-            table.remove(objects, closestIndex)
-            editor.notify("Deleted object")
-        end
+        -- Умное удаление: ищем объект под курсором
+        removeObjectAt(x, y)
     end
 end
 
@@ -356,15 +426,28 @@ function editor.keypressed(key)
         else gridSize = 32 end
         editor.notify("Grid size: " .. gridSize)
     elseif key == "e" then
-        placementMode = (placementMode == "circle") and "enemy" or "circle"
+        if placementMode == "circle" then
+            placementMode = "slider"
+        elseif placementMode == "slider" then
+            placementMode = "enemy"
+        else
+            placementMode = "circle"
+        end
         editor.notify("Mode: " .. string.upper(placementMode))
+    elseif key == "delete" then
+        local mx, my = love.mouse.getPosition()
+        removeObjectAt(mx, my)
     end
 end
 
 function editor.save()
     local str = "return {\n  objects = {\n"
     for _, obj in ipairs(objects) do
-        str = str .. string.format("    {x=%d, y=%d, time=%.3f, type=%q},\n", obj.x, obj.y, obj.time, obj.type)
+        if obj.type == "slider" then
+            str = str .. string.format("    {x=%d, y=%d, endX=%d, endY=%d, time=%.3f, type=%q, duration=%d},\n", obj.x, obj.y, obj.endX or obj.x, obj.endY or obj.y, obj.time, obj.type, obj.duration or 300)
+        else
+            str = str .. string.format("    {x=%d, y=%d, time=%.3f, type=%q},\n", obj.x, obj.y, obj.time, obj.type)
+        end
     end
     str = str .. "  }\n}"
     

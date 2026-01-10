@@ -207,7 +207,7 @@ function game.load_custom(folder_name, settings)
             local map_data = chunk()
             if map_data.objects then
                 for _, obj in ipairs(map_data.objects) do
-                    table.insert(hitObjects, {
+                    local newObj = {
                         x = obj.x,
                         y = obj.y,
                         time = (obj.time * 1000), -- Переводим секунды в мс (как в osu)
@@ -215,7 +215,15 @@ function game.load_custom(folder_name, settings)
                         preempt = 1200, -- Стандартное время предупреждения
                         exploded = false,
                         shown = false
-                    })
+                    }
+                    
+                    if newObj.type == "slider" then
+                        newObj.endX = obj.endX or obj.x
+                        newObj.endY = obj.endY or obj.y
+                        newObj.duration = obj.duration or 300
+                    end
+                    
+                    table.insert(hitObjects, newObj)
                     
                     if obj.time * 1000 < firstObjectTime then firstObjectTime = obj.time * 1000 end
                     local endTime = obj.time * 1000
