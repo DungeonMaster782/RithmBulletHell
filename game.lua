@@ -81,7 +81,8 @@ local function parse_osu(path)
                 exploded = false,
                 shown = false,
                 preempt = preempt,
-                type = isSlider and "slider" or "circle"
+                type = isSlider and "slider" or "circle",
+                volleys_fired = 0
             }
             
             if isSlider then
@@ -214,7 +215,8 @@ function game.load_custom(folder_name, settings)
                         type = obj.type or "circle", -- circle, slider, enemy
                         preempt = 1200, -- Стандартное время предупреждения
                         exploded = false,
-                        shown = false
+                        shown = false,
+                        volleys_fired = 0
                     }
                     
                     if newObj.type == "slider" then
@@ -230,6 +232,11 @@ function game.load_custom(folder_name, settings)
                     elseif newObj.type == "circle" then
                         newObj.custom_count = obj.custom_count
                         newObj.custom_speed = obj.custom_speed
+                        newObj.angle_offset = obj.angle_offset
+                        newObj.spread_angle = obj.spread_angle
+                        newObj.volleys = obj.volleys
+                        newObj.volley_interval = obj.volley_interval
+                        newObj.spin = obj.spin
                     end
                     
                     table.insert(hitObjects, newObj)
@@ -477,16 +484,42 @@ function game.update(dt)
                 if not obj.shown and currentTime >= obj.time - obj.preempt then
                     obj.shown = true
                 end
-                if not obj.exploded and currentTime >= obj.time then
-                    obj.exploded = true
-                    if bullets and bullets.explode_circle then
-                        -- Используем переведенные координаты для спауна пуль
-                        bullets.explode_circle({x = translated_x, y = translated_y, preempt = obj.preempt}, config)
-                        -- Эффект частиц при взрыве
-                        if particleSystem then
-                            particleSystem:setPosition(translated_x, translated_y)
-                            particleSystem:emit(30)
+                
+                if currentTime >= obj.time and not obj.exploded then
+                    local volleys = obj.volleys or 1
+                    local interval = (obj.volley_interval or 0.1) * 1000 -- переводим в мс
+                    
+                    -- Вычисляем, сколько залпов должно было уже произойти
+                    local time_since_start = currentTime - obj.time
+                    local expected_volleys = math.floor(time_since_start / interval) + 1
+                    
+                    if expected_volleys > volleys then expected_volleys = volleys end
+                    
+                    while obj.volleys_fired < expected_volleys do
+                        obj.volleys_fired = obj.volleys_fired + 1
+                        
+                        -- Вычисляем угол с учетом закрутки (Spin)
+                        local current_spin = (obj.spin or 0) * (obj.volleys_fired - 1)
+                        local current_angle = (obj.angle_offset or 0) + current_spin
+                        
+                        if bullets and bullets.explode_circle then
+                            -- Создаем временный объект параметров для передачи в bullets
+                            local spawn_params = {
+                                x = translated_x, y = translated_y, preempt = obj.preempt,
+                                custom_count = obj.custom_count, custom_speed = obj.custom_speed,
+                                angle_offset = current_angle, spread_angle = obj.spread_angle
+                            }
+                            bullets.explode_circle(spawn_params, config)
+                            
+                            if particleSystem then
+                                particleSystem:setPosition(translated_x, translated_y)
+                                particleSystem:emit(30)
+                            end
                         end
+                    end
+                    
+                    if obj.volleys_fired >= volleys then
+                        obj.exploded = true
                     end
                 end
             end

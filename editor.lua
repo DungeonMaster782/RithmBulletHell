@@ -355,6 +355,11 @@ function editor.draw()
         elseif menu.obj.type == "circle" then
             menu.obj.custom_count = menu.obj.custom_count or 0
             menu.obj.custom_speed = menu.obj.custom_speed or 0
+            menu.obj.angle_offset = menu.obj.angle_offset or 0
+            menu.obj.spread_angle = menu.obj.spread_angle or 360
+            menu.obj.volleys = menu.obj.volleys or 1
+            menu.obj.volley_interval = menu.obj.volley_interval or 0.1
+            menu.obj.spin = menu.obj.spin or 0
             
             -- Кнопка ADVANCED для Circle
             love.graphics.setColor(1, 1, 0)
@@ -374,6 +379,44 @@ function editor.draw()
                 love.graphics.print("Speed", mx + 10, my + yOff)
                 love.graphics.print("<", mx + 100, my + yOff)
                 love.graphics.print(tostring(sTxt), mx + 120, my + yOff)
+                love.graphics.print(">", mx + 180, my + yOff)
+                yOff = yOff + 30
+
+                -- Angle
+                local aTxt = math.floor(menu.obj.angle_offset)
+                love.graphics.print("Angle", mx + 10, my + yOff)
+                love.graphics.print("<", mx + 100, my + yOff)
+                love.graphics.print(tostring(aTxt), mx + 120, my + yOff)
+                love.graphics.print(">", mx + 180, my + yOff)
+                yOff = yOff + 30
+
+                -- Arc (Spread)
+                local arcTxt = math.floor(menu.obj.spread_angle)
+                love.graphics.print("Arc", mx + 10, my + yOff)
+                love.graphics.print("<", mx + 100, my + yOff)
+                love.graphics.print(tostring(arcTxt), mx + 120, my + yOff)
+                love.graphics.print(">", mx + 180, my + yOff)
+                yOff = yOff + 30
+
+                -- Volleys
+                love.graphics.print("Volleys", mx + 10, my + yOff)
+                love.graphics.print("<", mx + 100, my + yOff)
+                love.graphics.print(tostring(menu.obj.volleys), mx + 120, my + yOff)
+                love.graphics.print(">", mx + 180, my + yOff)
+                yOff = yOff + 30
+
+                -- Interval
+                love.graphics.print("Intv", mx + 10, my + yOff)
+                love.graphics.print("<", mx + 100, my + yOff)
+                love.graphics.print(string.format("%.2f", menu.obj.volley_interval), mx + 120, my + yOff)
+                love.graphics.print(">", mx + 180, my + yOff)
+                yOff = yOff + 30
+
+                -- Spin
+                local spinTxt = math.floor(menu.obj.spin)
+                love.graphics.print("Spin", mx + 10, my + yOff)
+                love.graphics.print("<", mx + 100, my + yOff)
+                love.graphics.print(tostring(spinTxt), mx + 120, my + yOff)
                 love.graphics.print(">", mx + 180, my + yOff)
                 yOff = yOff + 30
             end
@@ -498,6 +541,51 @@ function editor.mousepressed(x, y, button)
                         if x >= mx + 180 and x <= mx + 195 then s = s + 50 end
                     end
                     menu.obj.custom_speed = s
+                    yOff = yOff + 30
+
+                    -- Angle
+                    local a = menu.obj.angle_offset
+                    if y >= my + yOff and y <= my + yOff + 20 then
+                        if x >= mx + 100 and x <= mx + 115 then a = (a - 15) % 360 end
+                        if x >= mx + 180 and x <= mx + 195 then a = (a + 15) % 360 end
+                    end
+                    menu.obj.angle_offset = a
+                    yOff = yOff + 30
+
+                    -- Arc
+                    local arc = menu.obj.spread_angle
+                    if y >= my + yOff and y <= my + yOff + 20 then
+                        if x >= mx + 100 and x <= mx + 115 then arc = math.max(0, arc - 15) end
+                        if x >= mx + 180 and x <= mx + 195 then arc = math.min(360, arc + 15) end
+                    end
+                    menu.obj.spread_angle = arc
+                    yOff = yOff + 30
+
+                    -- Volleys
+                    local v = menu.obj.volleys
+                    if y >= my + yOff and y <= my + yOff + 20 then
+                        if x >= mx + 100 and x <= mx + 115 then v = math.max(1, v - 1) end
+                        if x >= mx + 180 and x <= mx + 195 then v = v + 1 end
+                    end
+                    menu.obj.volleys = v
+                    yOff = yOff + 30
+
+                    -- Interval
+                    local inv = menu.obj.volley_interval
+                    if y >= my + yOff and y <= my + yOff + 20 then
+                        if x >= mx + 100 and x <= mx + 115 then inv = math.max(0.05, inv - 0.05) end
+                        if x >= mx + 180 and x <= mx + 195 then inv = inv + 0.05 end
+                    end
+                    menu.obj.volley_interval = inv
+                    yOff = yOff + 30
+
+                    -- Spin
+                    local sp = menu.obj.spin
+                    if y >= my + yOff and y <= my + yOff + 20 then
+                        if x >= mx + 100 and x <= mx + 115 then sp = sp - 5 end
+                        if x >= mx + 180 and x <= mx + 195 then sp = sp + 5 end
+                    end
+                    menu.obj.spin = sp
                     yOff = yOff + 30
                 end
             end
@@ -647,7 +735,8 @@ function editor.save()
             str = str .. string.format("    {x=%d, y=%d, time=%.3f, type=%q, duration=%.1f, hp=%d, shootInterval=%.2f, bulletCount=%d, bulletSpeed=%d},\n", 
                 obj.x, obj.y, obj.time, obj.type, obj.duration or 5, obj.hp or 5, obj.shootInterval or 0.8, obj.bulletCount or 8, obj.bulletSpeed or 150)
         else
-            str = str .. string.format("    {x=%d, y=%d, time=%.3f, type=%q, custom_count=%d, custom_speed=%d},\n", obj.x, obj.y, obj.time, obj.type, obj.custom_count or 0, obj.custom_speed or 0)
+            str = str .. string.format("    {x=%d, y=%d, time=%.3f, type=%q, custom_count=%d, custom_speed=%d, angle_offset=%d, spread_angle=%d, volleys=%d, volley_interval=%.2f, spin=%d},\n", 
+                obj.x, obj.y, obj.time, obj.type, obj.custom_count or 0, obj.custom_speed or 0, obj.angle_offset or 0, obj.spread_angle or 360, obj.volleys or 1, obj.volley_interval or 0.1, obj.spin or 0)
         end
     end
     str = str .. "  }\n}"

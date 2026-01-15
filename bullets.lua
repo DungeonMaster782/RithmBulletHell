@@ -50,10 +50,23 @@ function bullets.spawn(x, y, speed, angle, radius)
 end
 
 -- Универсальная функция для спауна кольца пуль (для врагов и osu-карт)
-function bullets.spawn_ring(x, y, count, speed, radius)
+function bullets.spawn_ring(x, y, count, speed, radius, angle_offset, arc)
     if count <= 0 then return end
+    angle_offset = angle_offset or 0
+    arc = arc or (math.pi * 2)
+
     for i = 1, count do
-        local angle = (i / count) * math.pi * 2
+        local angle
+        if math.abs(arc - math.pi * 2) < 0.001 then
+            angle = angle_offset + ((i - 1) / count) * arc
+        else
+            -- Если это дуга (spread), распределяем равномерно
+            if count > 1 then
+                angle = angle_offset + ((i - 1) / (count - 1)) * arc
+            else
+                angle = angle_offset + arc / 2
+            end
+        end
         bullets.spawn(x, y, speed, angle, radius)
     end
 end
@@ -70,9 +83,13 @@ function bullets.explode_circle(obj, config)
     local speed = base_speed * config.bullet_speed
     local radius = 5 * (config.bullet_size or 1.0)
 
+    -- Параметры угла и дуги (переводим из градусов в радианы)
+    local angle_offset = math.rad(obj.angle_offset or 0)
+    local arc = math.rad(obj.spread_angle or 360)
+
     print("[BULLETS] Boom! Spawning " .. count .. " bullets at (" .. math.floor(obj.x) .. ", " .. math.floor(obj.y) .. ")")
 
-    bullets.spawn_ring(obj.x, obj.y, count, speed, radius)
+    bullets.spawn_ring(obj.x, obj.y, count, speed, radius, angle_offset, arc)
 end
 
 function bullets.update(dt)
