@@ -80,8 +80,10 @@ function bullets.explode_circle(obj, config)
     local base_speed = math.max(100, 400 - obj.preempt)
     if obj.custom_speed and obj.custom_speed > 0 then base_speed = obj.custom_speed end
     
-    local speed = base_speed * config.bullet_speed
-    local radius = 5 * (config.bullet_size or 1.0)
+    -- Применяем масштаб (config.scale) к скорости и размеру
+    local scale = config.scale or 1.0
+    local speed = base_speed * config.bullet_speed * scale
+    local radius = 5 * (config.bullet_size or 1.0) * scale
 
     -- Параметры угла и дуги (переводим из градусов в радианы)
     local angle_offset = math.rad(obj.angle_offset or 0)

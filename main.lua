@@ -8,12 +8,14 @@ local selected_song = nil
 local selected_difficulty = nil
 local selected_custom_map = nil
 local font
+fonts = {} -- Глобальная таблица шрифтов
 
 game = nil -- Глобальная переменная, чтобы консоль ее видела
 
 -- Фоны
 local main_menu_background_path = "res/images/menu.png"
 local main_menu_background = nil
+local menu_background_dim = 0.2 -- Затемнение фона в меню (0.0 - нет, 1.0 - черный)
 
 local osu_menu_background_path = "res/images/osu_menu_bg.png"
 local osu_menu_background = nil
@@ -270,12 +272,33 @@ local function scan_custom_maps()
     end
 end
 
+-- Функция для расчета масштаба меню (адаптация под разрешение)
+local function get_menu_scale()
+    local w, h = love.graphics.getDimensions()
+    local target_h = 720
+    local scale = h / target_h
+    return scale, 0, 0
+end
+
 -- Функции
 function love.load()
 console.load()
 print("[MAIN] Game starting...")
-font = love.graphics.newFont(18)
-love.graphics.setFont(font)
+
+-- Инициализация шрифтов один раз
+local fontPath = "res/RussoOne-Regular.ttf"
+if love.filesystem.getInfo(fontPath) then
+    fonts.main = love.graphics.newFont(fontPath, 20)
+    fonts.menu = love.graphics.newFont(fontPath, 24)
+    fonts.title = love.graphics.newFont(fontPath, 40)
+else
+    fonts.main = love.graphics.newFont(20)
+    fonts.menu = love.graphics.newFont(24)
+    fonts.title = love.graphics.newFont(40)
+end
+
+font = fonts.main -- Для совместимости с локальной переменной в main.lua
+love.graphics.setFont(fonts.main)
 
 next_time = love.timer.getTime()
 -- Сначала загружаем конфиг, чтобы применить настройки (громкость, разрешение)
@@ -382,7 +405,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                             if option == "Music Volume" then
                                                                                 draw_text_with_outline(prefix .. option, 70, 80 + i * 30, item_color)
                                                                                 -- Рисуем полоску громкости
-                                                                                local bar_x = 250
+                                                                                local bar_x = 400
                                                                                 local bar_w = 200
                                                                                 local bar_h = 20
                                                                                 love.graphics.setColor(item_color)
@@ -392,7 +415,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                 value = "" -- Уже отрисовали
                                                                             elseif option == "Background Dim" then
                                                                                 draw_text_with_outline(prefix .. option, 70, 80 + i * 30, item_color)
-                                                                                local bar_x = 250
+                                                                                local bar_x = 400
                                                                                 local bar_w = 200
                                                                                 local bar_h = 20
                                                                                 love.graphics.setColor(item_color)
@@ -595,6 +618,8 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                             end
 
                                                                                                                                                             function love.draw()
+                                                                                                                                                            local s, ox, oy = get_menu_scale()
+
                                                                                                                                                             if mode == "main_menu" then
                                                                                                                                                                 if main_menu_background then
                                                                                                                                                                     love.graphics.draw(main_menu_background, 0, 0, 0,
@@ -602,15 +627,19 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                        love.graphics.getHeight() / main_menu_background:getHeight())
                                                                                                                                                                     end
 
-                                                                                                                                                                    love.graphics.setColor(0, 0, 0, 0.5)
+                                                                                                                                                                    love.graphics.setColor(0, 0, 0, menu_background_dim)
                                                                                                                                                                     love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
                                                                                                                                                                     love.graphics.setColor(1, 1, 1, 1)
+
+                                                                                                                                                                    love.graphics.push()
+                                                                                                                                                                    love.graphics.translate(ox, oy)
+                                                                                                                                                                    love.graphics.scale(s)
 
                                                                                                                                                                     draw_text_with_outline("Main Menu", 50, 50)
                                                                                                                                                                     
                                                                                                                                                                     -- Подсказка про импорт
                                                                                                                                                                     love.graphics.setColor(0.7, 0.7, 0.7, 1)
-                                                                                                                                                                    love.graphics.print("Drag & Drop .osz files to import", 50, love.graphics.getHeight() - 40)
+                                                                                                                                                                    love.graphics.print("Drag & Drop .osz files to import", 50, 720 - 40)
                                                                                                                                                                     love.graphics.setColor(1, 1, 1, 1)
 
                                                                                                                                                                     for i, item in ipairs(main_menu_items) do
@@ -618,17 +647,22 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                         local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
                                                                                                                                                                         draw_text_with_outline(prefix .. item, 70, 80 + i * 30, color)
                                                                                                                                                                         end
+                                                                                                                                                                        love.graphics.pop()
 
                                                                                                                                                                         elseif mode == "settings" then
                                                                                                                                                                             if main_menu_background then
                                                                                                                                                                                 love.graphics.draw(main_menu_background, 0, 0, 0,
                                                                                                                                                                                                    love.graphics.getWidth() / main_menu_background:getWidth(),
                                                                                                                                                                                                    love.graphics.getHeight() / main_menu_background:getHeight())
-                                                                                                                                                                                love.graphics.setColor(0, 0, 0, 0.5)
+                                                                                                                                                                                love.graphics.setColor(0, 0, 0, menu_background_dim)
                                                                                                                                                                                 love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
                                                                                                                                                                                 love.graphics.setColor(1, 1, 1, 1)
                                                                                                                                                                                 end
+                                                                                                                                                                                love.graphics.push()
+                                                                                                                                                                                love.graphics.translate(ox, oy)
+                                                                                                                                                                                love.graphics.scale(s)
                                                                                                                                                                                 draw_settings_menu()
+                                                                                                                                                                                love.graphics.pop()
 
                                                                                                                                                                                 elseif mode == "osu_menu" then
                                                                                                                                                                                     local keys = get_song_list()
@@ -647,11 +681,14 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                     love.graphics.draw(bg, 0, 0, 0,
                                                                                                                                                                                                                        love.graphics.getWidth() / bg:getWidth(),
                                                                                                                                                                                                                        love.graphics.getHeight() / bg:getHeight())
-                                                                                                                                                                                                    love.graphics.setColor(0, 0, 0, 0.5)
+                                                                                                                                                                                                    love.graphics.setColor(0, 0, 0, menu_background_dim)
                                                                                                                                                                                                     love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
                                                                                                                                                                                                     love.graphics.setColor(1, 1, 1, 1)
                                                                                                                                                                                                     end
 
+                                                                                                                                                                                                    love.graphics.push()
+                                                                                                                                                                                                    love.graphics.translate(ox, oy)
+                                                                                                                                                                                                    love.graphics.scale(s)
                                                                                                                                                                                                     draw_text_with_outline("Select a song:", 50, 50)
                                                                                                                                                                                                     for i, folder in ipairs(keys) do
                                                                                                                                                                                                         local prefix = (i == selected_index) and "> " or "  "
@@ -659,8 +696,9 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                         draw_text_with_outline(prefix .. folder, 70, 80 + i * 30, color)
                                                                                                                                                                                                         end
                                                                                                                                                                                                         love.graphics.setColor(1, 0.5, 0.5, 1)
-                                                                                                                                                                                                        draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
+                                                                                                                                                                                                        draw_text_with_outline("Press DELETE to remove map", 50, 720 - 40)
                                                                                                                                                                                                         love.graphics.setColor(1, 1, 1, 1)
+                                                                                                                                                                                                        love.graphics.pop()
 
                                                                                                                                                                                                         elseif mode == "difficulties" and selected_song then
                                                                                                                                                                                                             local bg = backgrounds[selected_song]
@@ -668,11 +706,14 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                 love.graphics.draw(bg, 0, 0, 0,
                                                                                                                                                                                                                                    love.graphics.getWidth() / bg:getWidth(),
                                                                                                                                                                                                                                    love.graphics.getHeight() / bg:getHeight())
-                                                                                                                                                                                                                love.graphics.setColor(0, 0, 0, 0.5)
+                                                                                                                                                                                                                love.graphics.setColor(0, 0, 0, menu_background_dim)
                                                                                                                                                                                                                 love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
                                                                                                                                                                                                                 love.graphics.setColor(1, 1, 1, 1)
                                                                                                                                                                                                                 end
 
+                                                                                                                                                                                                                love.graphics.push()
+                                                                                                                                                                                                                love.graphics.translate(ox, oy)
+                                                                                                                                                                                                                love.graphics.scale(s)
                                                                                                                                                                                                                 draw_text_with_outline("Select difficulty for: " .. selected_song, 50, 50)
                                                                                                                                                                                                                 local difficulties = maps[selected_song] or {}
                                                                                                                                                                                                                 for i, diff in ipairs(difficulties) do
@@ -680,6 +721,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                     local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
                                                                                                                                                                                                                     draw_text_with_outline(prefix .. diff, 70, 80 + i * 30, color)
                                                                                                                                                                                                                     end
+                                                                                                                                                                                                                    love.graphics.pop()
 
                                                                                                                                                                                                                     elseif mode == "gameplay" then
                                                                                                                                                                                                                         if game and game.draw then
@@ -689,6 +731,9 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                 draw_text_with_outline("Press ESC to return to menu", 50, 80)
                                                                                                                                                                                                                                 end
     elseif mode == "custom_select" then
+        love.graphics.push()
+        love.graphics.translate(ox, oy)
+        love.graphics.scale(s)
         draw_text_with_outline("Select Custom Map:", 50, 50)
         if #custom_maps == 0 then
             draw_text_with_outline("No maps in Mmaps folder!", 70, 80, {1, 0, 0, 1})
@@ -699,10 +744,14 @@ if love.filesystem.getInfo(main_menu_background_path) then
                 draw_text_with_outline(prefix .. map, 70, 80 + i * 30, color)
             end
             love.graphics.setColor(1, 0.5, 0.5, 1)
-            draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
+            draw_text_with_outline("Press DELETE to remove map", 50, 720 - 40)
             love.graphics.setColor(1, 1, 1, 1)
         end
+        love.graphics.pop()
     elseif mode == "editor_select" then
+        love.graphics.push()
+        love.graphics.translate(ox, oy)
+        love.graphics.scale(s)
         draw_text_with_outline("Editor - Select Map:", 50, 50)
         local prefix = (selected_index == 1) and "> " or "  "
         local color = (selected_index == 1) and {0, 1, 0, 1} or {1, 1, 1, 1}
@@ -716,14 +765,19 @@ if love.filesystem.getInfo(main_menu_background_path) then
         end
         if selected_index > 1 then
             love.graphics.setColor(1, 0.5, 0.5, 1)
-            draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
+            draw_text_with_outline("Press DELETE to remove map", 50, 720 - 40)
             love.graphics.setColor(1, 1, 1, 1)
         end
+        love.graphics.pop()
     elseif mode == "editor" then
         editor.draw()
     elseif mode == "editor_name_input" then
+        love.graphics.push()
+        love.graphics.translate(ox, oy)
+        love.graphics.scale(s)
         draw_text_with_outline("Enter New Map Name:", 50, 50)
         draw_text_with_outline(new_map_name .. "_", 50, 80, {1, 1, 0, 1})
+        love.graphics.pop()
                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                 -- Отрисовка FPS (теперь внутри love.draw)
                                                                                                                                                                                                                                 if settings.show_fps then
@@ -1146,6 +1200,11 @@ function love.mousepressed(x, y, button)
         return
     end
 
+    -- Масштабируем координаты мыши для меню
+    local s, ox, oy = get_menu_scale()
+    x = (x - ox) / s
+    y = (y - oy) / s
+
     -- Обработка кликов в меню
     if button == 1 then
         local start_y = 80
@@ -1165,7 +1224,7 @@ function love.mousepressed(x, y, button)
             if y >= iy and y < iy + line_h and x > 20 then
                 -- Логика для слайдера громкости (клик мышкой)
                 if mode == "settings" and settings_options[i] == "Music Volume" then
-                    local bar_x = 250
+                    local bar_x = 400
                     local bar_w = 200
                     if x >= bar_x and x <= bar_x + bar_w then
                         temp_settings.music_volume = (x - bar_x) / bar_w
@@ -1174,7 +1233,7 @@ function love.mousepressed(x, y, button)
                         return -- Прерываем, чтобы не сработало переключение
                     end
                 elseif mode == "settings" and settings_options[i] == "Background Dim" then
-                    local bar_x = 250
+                    local bar_x = 400
                     local bar_w = 200
                     if x >= bar_x and x <= bar_x + bar_w then
                         temp_settings.background_dim = (x - bar_x) / bar_w
@@ -1286,6 +1345,11 @@ function love.mousemoved(x, y)
         game.mousemoved(x, y)
         return
     end
+
+    -- Масштабируем координаты мыши для меню
+    local s, ox, oy = get_menu_scale()
+    x = (x - ox) / s
+    y = (y - oy) / s
 
     local start_y = 80
     local line_h = 30

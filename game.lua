@@ -20,8 +20,6 @@ local settingsOpen = false
 local state = "playing" -- "playing", "paused", "game_over", "victory"
 local menu_selection = 1
 local current_volume = 1.0
-local titleFont = nil
-local menuFont = nil
 local backgroundImage = nil
 local particleSystem = nil
 local backgroundVideo = nil
@@ -149,7 +147,7 @@ local function apply_settings(settings)
     player.maxDashCharges = settings.max_dash_charges
     player.dashRechargeTime = settings.dash_recharge_time
     player.dashDuration = settings.dash_duration
-    player.hitboxRadius = settings.hitbox_radius
+    player.baseHitboxRadius = settings.hitbox_radius
     player.invulnDuration = settings.invuln_time
 end
 
@@ -159,8 +157,6 @@ local function reset_state()
     pauseTime = 0
     bullets.load()
     
-    titleFont = love.graphics.newFont(30)
-    menuFont = love.graphics.newFont(18)
     
     -- Particles
     local p_canvas = love.graphics.newCanvas(8, 8)
@@ -279,6 +275,19 @@ function game.load_custom(folder_name, settings)
     end
 end
 
+-- Функция обновления масштаба для всех сущностей
+local function update_game_scale(scale)
+    scaleX = scale
+    scaleY = scale
+    
+    -- Обновляем масштаб игрока и врагов
+    player.setScale(scale)
+    enemies.setScale(scale)
+    
+    -- Корректируем скорость игрока с учетом масштаба
+    player.speed = 200 * (config.player_speed or 1.0) * scale
+end
+
 -- ======= GAME FUNCTIONS =======
 function game.load(song, difficulty, bg_image, settings)
     print("[GAME] Loading level: " .. song .. " [" .. difficulty .. "]")
@@ -321,12 +330,11 @@ function game.load(song, difficulty, bg_image, settings)
     local love_width = love.graphics.getWidth()
     local love_height = love.graphics.getHeight()
 
-    -- Используем виртуальное разрешение 640x480 (osu поле 512x384 + отступы)
-    local target_w, target_h = 640, 480
+    -- Используем виртуальное разрешение 960x720 (чтобы элементы не были слишком огромными)
+    local target_w, target_h = 960, 720
     local scale = math.min(love_width / target_w, love_height / target_h)
     
-    scaleX = scale
-    scaleY = scale
+    update_game_scale(scale)
     
     -- Центрируем игровое поле (512x384) на экране
     offsetX = (love_width - 512 * scale) / 2
@@ -337,6 +345,8 @@ function game.load(song, difficulty, bg_image, settings)
     -- Инициализируем player
     -- *** НОВОЕ: Передаем текущие размеры для правильного центрирования ***
     player.load(love_width, love_height)
+    -- Применяем масштаб к игроку после загрузки
+    player.setScale(scale)
 
     -- Загрузка видео
     if video_name then
@@ -506,9 +516,12 @@ function game.update(dt)
                             -- Создаем временный объект параметров для передачи в bullets
                             local spawn_params = {
                                 x = translated_x, y = translated_y, preempt = obj.preempt,
-                                custom_count = obj.custom_count, custom_speed = obj.custom_speed,
+                                custom_count = obj.custom_count, 
+                                custom_speed = obj.custom_speed, -- Это базовая скорость, она будет умножена на scale внутри explode_circle
                                 angle_offset = current_angle, spread_angle = obj.spread_angle
                             }
+                            -- Передаем текущий масштаб в конфиг для пуль
+                            config.scale = scaleX
                             bullets.explode_circle(spawn_params, config)
                             
                             if particleSystem then
@@ -625,7 +638,7 @@ function game.draw()
                 local ty = (obj.y * scaleY) + offsetY
                 local tex = (obj.endX * scaleX) + offsetX
                 local tey = (obj.endY * scaleY) + offsetY
-                lasers.draw(obj, tx, ty, tex, tey, currentTime)
+                lasers.draw(obj, tx, ty, tex, tey, currentTime, scaleX)
                 
                 -- Отрисовка хитбокса лазера (если включено отображение)
                 if player.showHitbox then
@@ -690,7 +703,7 @@ function game.draw()
     -- ОТРИСОВКА МЕНЮ (ПАУЗА / GAME OVER / VICTORY)
     if state ~= "playing" and not settingsOpen then
         local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-        local cx, cy = w / 2, h / 2
+        local ui_scale = h / 720 -- Масштаб интерфейса относительно высоты 720p
 
         -- Затемнение
         love.graphics.setColor(0, 0, 0, 0.7)
@@ -720,28 +733,39 @@ function game.draw()
             options = {"Restart", "Exit"}
         end
 
+        love.graphics.push()
+        love.graphics.translate(w/2, h/2) -- Сдвигаем начало координат в центр экрана
+        love.graphics.scale(ui_scale)     -- Применяем масштаб
+
         -- Заголовок
-        if titleFont then love.graphics.setFont(titleFont) end
-        love.graphics.printf(title, 0, cy - 100, w, "center")
+        if fonts.title then love.graphics.setFont(fonts.title) end
+        -- Рисуем относительно центра (0,0)
+        love.graphics.printf(title, -400, -150, 800, "center")
         love.graphics.setColor(1, 1, 1, 1)
-        if menuFont then love.graphics.setFont(menuFont) end
+        if fonts.menu then love.graphics.setFont(fonts.menu) end
 
         -- Опции
+        local start_y = -40
+        local line_h = 40
+
         for i, opt in ipairs(options) do
+            local str = opt
             if i == menu_selection then
                 love.graphics.setColor(1, 1, 0, 1)
-                love.graphics.print("> " .. opt, cx - 60, cy - 40 + i * 30)
+                str = "> " .. str .. " <"
             else
                 love.graphics.setColor(1, 1, 1, 1)
-                love.graphics.print("  " .. opt, cx - 60, cy - 40 + i * 30)
             end
+            love.graphics.printf(str, -400, start_y + (i-1)*line_h, 800, "center")
         end
         
         -- Подсказка для громкости
         if state == "paused" and (options[menu_selection]:match("Volume") or options[menu_selection]:match("Dim") or options[menu_selection]:match("Video")) then
             love.graphics.setColor(0.7, 0.7, 0.7, 1)
-            love.graphics.print("< Left / Right >", cx + 80, cy - 40 + 3 * 30)
+            love.graphics.printf("< Left / Right >", -400, start_y + (#options)*line_h + 10, 800, "center")
         end
+        
+        love.graphics.pop()
     end
 end
 
@@ -821,13 +845,17 @@ end
 function game.mousemoved(x, y)
     if state ~= "playing" and not settingsOpen then
         local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-        local cx, cy = w / 2, h / 2
-        local base_y = cy - 40
+        local ui_scale = h / 720
+        -- Переводим Y мыши в локальные координаты меню
+        local local_y = (y - h/2) / ui_scale
+        
+        local start_y = -40
+        local line_h = 40
         local options_count = (state == "paused") and 6 or 2
         
         for i = 1, options_count do
-            local opt_y = base_y + i * 30
-            if y >= opt_y and y <= opt_y + 20 then
+            local opt_y = start_y + (i-1) * line_h
+            if local_y >= opt_y and local_y <= opt_y + 30 then
                 menu_selection = i
             end
         end
@@ -838,14 +866,16 @@ function game.mousepressed(x, y, button)
     -- Обработка кликов в меню паузы/смерти
     if state ~= "playing" and button == 1 then
         local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-        local cx, cy = w / 2, h / 2
-        local base_y = cy - 40
+        local ui_scale = h / 720
+        local local_y = (y - h/2) / ui_scale
         
+        local start_y = -40
+        local line_h = 40
         local options_count = (state == "paused") and 6 or 2
         
         for i = 1, options_count do
-            local opt_y = base_y + i * 30
-            if y >= opt_y and y <= opt_y + 20 then
+            local opt_y = start_y + (i-1) * line_h
+            if local_y >= opt_y and local_y <= opt_y + 30 then
                 -- Если кликнули по опции
                 if state == "paused" then
                     if i == 1 then 
@@ -898,11 +928,10 @@ end
 
 function game.resize(w, h)
     -- Пересчитываем масштаб игрового поля при изменении размера окна
-    local target_w, target_h = 640, 480
+    local target_w, target_h = 960, 720
     local scale = math.min(w / target_w, h / target_h)
     
-    scaleX = scale
-    scaleY = scale
+    update_game_scale(scale)
     
     -- Центрируем игровое поле (512x384) на экране
     offsetX = (w - 512 * scale) / 2

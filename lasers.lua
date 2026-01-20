@@ -12,8 +12,9 @@ function lasers.getDistance(px, py, x1, y1, x2, y2)
     return math.sqrt((px - cx)^2 + (py - cy)^2)
 end
 
-function lasers.draw(obj, x1, y1, x2, y2, currentTime)
+function lasers.draw(obj, x1, y1, x2, y2, currentTime, scale)
     if not obj.shown or obj.exploded then return end
+    scale = scale or 1
 
     if obj.active then
         -- === АКТИВНЫЙ ЛАЗЕР (ВЫСТРЕЛ) ===
@@ -23,18 +24,18 @@ function lasers.draw(obj, x1, y1, x2, y2, currentTime)
         love.graphics.setColor(1, 0.1, 0.1, 0.6)
         -- Пульсация ширины
         local pulse = math.sin(currentTime / 20) * 4
-        love.graphics.setLineWidth(28 + pulse)
+        love.graphics.setLineWidth((28 + pulse) * scale)
         love.graphics.line(x1, y1, x2, y2)
         
         -- Яркое белое ядро
         love.graphics.setColor(1, 0.9, 0.8, 1)
-        love.graphics.setLineWidth(8)
+        love.graphics.setLineWidth(8 * scale)
         love.graphics.line(x1, y1, x2, y2)
         
         -- Свечение на концах
         love.graphics.setColor(1, 0.4, 0.2, 0.8)
-        love.graphics.circle("fill", x1, y1, 12 + pulse/2)
-        love.graphics.circle("fill", x2, y2, 12 + pulse/2)
+        love.graphics.circle("fill", x1, y1, (12 + pulse/2) * scale)
+        love.graphics.circle("fill", x2, y2, (12 + pulse/2) * scale)
         
     else
         -- === ПРЕДУПРЕЖДЕНИЕ (ПОДГОТОВКА) ===
@@ -45,7 +46,7 @@ function lasers.draw(obj, x1, y1, x2, y2, currentTime)
         -- Тонкая линия, которая становится ярче и шире
         love.graphics.setColor(1, 0, 0, 0.2 + 0.6 * progress)
         local w = 2 + 15 * progress
-        love.graphics.setLineWidth(w) 
+        love.graphics.setLineWidth(w * scale) 
         love.graphics.line(x1, y1, x2, y2)
         love.graphics.circle("fill", x1, y1, w / 2)
         love.graphics.circle("fill", x2, y2, w / 2)

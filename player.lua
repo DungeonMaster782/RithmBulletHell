@@ -2,8 +2,11 @@ local player = {
     x = 400,
     y = 300,
     radius = 16,
+    baseRadius = 16, -- Базовый радиус для масштабирования
     hitboxRadius = 5,
-    grazeRadius = 15, -- Радиус грейза (2x хитбокса)
+    baseHitboxRadius = 5, -- Базовый радиус хитбокса
+    scale = 1,       -- Текущий масштаб
+    grazeRadius = 15, 
     score = 0,
     showHitbox = false,
     speed = 200,
@@ -39,6 +42,14 @@ local player = {
     dashTimer = 0,
     dashDuration = 0.5
 }
+
+function player.setScale(scale)
+    player.scale = scale
+    -- Масштабируем радиус коллизии
+    player.radius = player.baseRadius * scale
+    player.hitboxRadius = player.baseHitboxRadius * scale
+    player.grazeRadius = player.hitboxRadius * 2
+end
 
 function player.load(screenWidth, screenHeight)
     player.texture = love.graphics.newImage("res/images/player.png")
@@ -176,7 +187,7 @@ function player.draw()
         love.graphics.setColor(1, 1, 1)
         local w = player.texture:getWidth()
         local h = player.texture:getHeight()
-        love.graphics.draw(player.texture, player.visualX, player.visualY, 0, 1, 1, w / 2, h / 2)
+        love.graphics.draw(player.texture, player.visualX, player.visualY, 0, player.scale, player.scale, w / 2, h / 2)
     else
         love.graphics.setColor(1, 1, 1)
         love.graphics.circle("fill", player.visualX, player.visualY, player.radius)
@@ -189,6 +200,9 @@ function player.draw()
         if player.focusAnimTime < 0.2 then
             scale = 1.5 - (0.5 * (player.focusAnimTime / 0.2))
         end
+        
+        -- Умножаем на глобальный масштаб игрока
+        scale = scale * player.scale
 
         local w = player.focusTexture:getWidth()
         local h = player.focusTexture:getHeight()

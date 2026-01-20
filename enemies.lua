@@ -2,6 +2,11 @@ local enemies = {}
 local bullets = require("bullets")
 local list = {}
 local img = nil
+local scale = 1
+
+function enemies.setScale(s)
+    scale = s
+end
 
 function enemies.load()
     list = {}
@@ -82,7 +87,7 @@ function enemies.update(dt, player_shots)
                 local s = player_shots[j]
                 local dx = s.x - e.visualX
                 local dy = s.y - e.visualY
-                if dx*dx + dy*dy < 1600 then -- Радиус ~40
+                if dx*dx + dy*dy < (1600 * scale * scale) then -- Радиус ~40, масштабируем квадрат радиуса
                     e.hp = e.hp - 1
                     table.remove(player_shots, j)
                     if e.hp <= 0 then
@@ -102,7 +107,7 @@ function enemies.draw(showHitbox)
     love.graphics.setColor(1, 1, 1, 1)
     for _, e in ipairs(list) do
         if img then
-            love.graphics.draw(img, e.visualX, e.visualY, 0, 1, 1, img:getWidth()/2, img:getHeight()/2)
+            love.graphics.draw(img, e.visualX, e.visualY, 0, scale, scale, img:getWidth()/2, img:getHeight()/2)
         else
             -- Заглушка, если нет текстуры
             love.graphics.setColor(1, 0.2, 0.2)
