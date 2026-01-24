@@ -99,13 +99,22 @@ function bullets.update(dt)
     local h = love.graphics.getHeight()
     local margin = 50
 
-    for i = #bullets.list, 1, -1 do
-        local b = bullets.list[i]
+    local write_idx = 1
+    for read_idx = 1, #bullets.list do
+        local b = bullets.list[read_idx]
         b.x = b.x + b.vx * dt
         b.y = b.y + b.vy * dt
-        if b.x < -margin or b.x > (w + margin) or b.y < -margin or b.y > (h + margin) then
-            table.remove(bullets.list, i)
+        
+        if not (b.x < -margin or b.x > (w + margin) or b.y < -margin or b.y > (h + margin)) then
+            if read_idx ~= write_idx then
+                bullets.list[write_idx] = b
+            end
+            write_idx = write_idx + 1
         end
+    end
+    -- Удаляем "хвост"
+    for i = write_idx, #bullets.list do
+        bullets.list[i] = nil
     end
 end
 
@@ -114,38 +123,41 @@ function bullets.draw()
     if bullets.batch then bullets.batch:clear() end
     if bullets.glowBatch then bullets.glowBatch:clear() end
 
+    -- Объединяем итерации для производительности
+    if #bullets.list > 0 then
+        local glow_ox, glow_oy, bullet_w, bullet_ox, bullet_oy
+        if bullets.glowTexture then
+            glow_ox = bullets.glowTexture:getWidth() / 2
+            glow_oy = bullets.glowTexture:getHeight() / 2
+        end
+        if bullets.texture then
+            bullet_w = bullets.texture:getWidth()
+            bullet_ox = bullet_w / 2
+            bullet_oy = bullets.texture:getHeight() / 2
+        end
+
+        for _, b in ipairs(bullets.list) do
+            if bullets.glowBatch and glow_ox then
+                local scale = (b.radius * 3) / glow_ox
+                bullets.glowBatch:add(b.x, b.y, 0, scale, scale, glow_ox, glow_oy)
+            end
+            if bullets.batch and bullet_w then
+                local scale = (b.radius * 2) / bullet_w
+                bullets.batch:add(b.x, b.y, 0, scale, scale, bullet_ox, bullet_oy)
+            end
+        end
+    end
+
     -- 1. Слой свечения (Glow)
     love.graphics.setBlendMode("add")
     love.graphics.setColor(0.2, 0.6, 1, 0.8) -- Голубоватое свечение
-    
-    if bullets.glowTexture and bullets.glowBatch then
-        local gw = bullets.glowTexture:getWidth()
-        local gh = bullets.glowTexture:getHeight()
-        local ox, oy = gw / 2, gh / 2
-        
-        for _, b in ipairs(bullets.list) do
-            local scale = (b.radius * 3) / ox
-            bullets.glowBatch:add(b.x, b.y, 0, scale, scale, ox, oy)
-        end
+    if bullets.glowBatch then
         love.graphics.draw(bullets.glowBatch)
     end
     
     -- 2. Основное тело пули
-    if bullets.texture and bullets.batch then
-        local w = bullets.texture:getWidth()
-        local h = bullets.texture:getHeight()
-        local ox, oy = w / 2, h / 2
-        
-        for _, b in ipairs(bullets.list) do
-            local scale = (b.radius * 2) / w
-            bullets.batch:add(b.x, b.y, 0, scale, scale, ox, oy)
-        end
-    end
-
-    -- Отрисовка основного слоя
     love.graphics.setBlendMode("alpha")
     love.graphics.setColor(1, 1, 1, 1)
-    
     if bullets.batch then
         love.graphics.draw(bullets.batch)
     else

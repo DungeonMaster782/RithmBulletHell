@@ -7,6 +7,7 @@ local mode = "main_menu" -- main_menu, osu_menu, difficulties, settings, gamepla
 local selected_song = nil
 local selected_difficulty = nil
 local selected_custom_map = nil
+local song_list = {}
 local font
 fonts = {} -- Глобальная таблица шрифтов
 
@@ -69,7 +70,6 @@ local temp_settings = {}
 local settings_options = {"Music Volume", "Background Dim", "Show Video", "Resolution", "Window Mode", "Lives", "Controls", "Bullet Multiplier", "Bullet Speed", "Bullet Size", "Player Speed", "Show FPS", "Show Hitboxes", "VSync", "Max FPS", "Save", "Back"}
 local settings_selected_index = 1
 
-local next_time = 0
 local custom_maps = {}
 local new_map_name = ""
 local notification = nil
@@ -221,8 +221,7 @@ local function save_game_config()
         -- Если успешно записали локально, удаляем копию из AppData, чтобы она не перекрывала наш файл
         love.filesystem.remove("config.txt")
     else
-        -- Если не получилось (например, нет прав записи), сохраняем по старинке в AppData
-        love.filesystem.write("config.txt", content)
+        print("[CONFIG] Error: Could not write config.txt to game folder.")
     end
 end
 
@@ -300,7 +299,6 @@ end
 font = fonts.main -- Для совместимости с локальной переменной в main.lua
 love.graphics.setFont(fonts.main)
 
-next_time = love.timer.getTime()
 -- Сначала загружаем конфиг, чтобы применить настройки (громкость, разрешение)
 load_game_config()
 
@@ -366,13 +364,18 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                     else
                                                         print("Warning: maps directory not found: " .. maps_dir)
                                                         end
-                                                        end
 
+    local keys = {}
+    for k in pairs(maps) do table.insert(keys, k) end
+    table.sort(keys)
+    song_list = keys
+end
+
+local outline_color_cache = {0, 0, 0, 1}
                                                         local function draw_text_with_outline(text, x, y, color)
-                                                        local outline_color = {0, 0, 0, 1}
                                                         local text_color = color or {1, 1, 1, 1}
 
-                                                        love.graphics.setColor(outline_color)
+                                                        love.graphics.setColor(outline_color_cache)
                                                         for ox = -1, 1 do
                                                             for oy = -1, 1 do
                                                                 if not (ox == 0 and oy == 0) then
@@ -387,12 +390,7 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                     end
 
                                                                     function get_song_list()
-                                                                    local keys = {}
-                                                                    for k, _ in pairs(maps) do
-                                                                        table.insert(keys, k)
-                                                                        end
-                                                                        table.sort(keys)
-                                                                        return keys
+                                                                        return song_list
                                                                         end
 
                                                                         function draw_settings_menu()
@@ -810,24 +808,6 @@ if love.filesystem.getInfo(main_menu_background_path) then
 
                                                                                                                                                                                                                                 function love.update(dt)
                                                                                                                                                                                                                                 if console.isOpen then return end
-                                                                                                                                                                                                                                -- Ограничитель FPS (если VSync выключен)
-                                                                                                                                                                                                                                if not settings.vsync and settings.max_fps > 0 then
-        next_time = next_time + 1.0 / settings.max_fps
-        local cur_time = love.timer.getTime()
-        if next_time > cur_time then
-            local time_to_sleep = next_time - cur_time
-            -- Гибридное ожидание: sleep для разгрузки CPU, busy-wait для точности
-            if time_to_sleep > 0.002 then
-                love.timer.sleep(time_to_sleep - 0.001)
-            end
-            -- Точная доводка циклом (busy-wait)
-            while love.timer.getTime() < next_time do end
-        else
-            next_time = cur_time
-                                                                                                                                                                                                                                    end
-    else
-        next_time = love.timer.getTime()
-                                                                                                                                                                                                                                end
 
                                                                                                                                                                 if notification_timer > 0 then
                                                                                                                                                                     notification_timer = notification_timer - dt
@@ -1066,13 +1046,19 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                                                     end
 
                                                                                                                                                                                                                                                                 elseif mode == "editor" then
-                                                                                                                                                                                                                                                                    local action = editor.keypressed(key)
+                                                                                                                                                                                                                                                                    local action, arg1, arg2 = editor.keypressed(key)
                                                                                                                                                                                                                                                                     if action == "exit" then
                                                                                                                                                                                                                                                                         mode = "main_menu"
                                                                                                                                                                                                                                                                         scan_custom_maps()
                                                                                                                                                                                                                                         if menu_music and not menu_music:isPlaying() then
                                                                                                                                                                                                                                             menu_music:play()
                                                                                                                                                                                                                                         end
+                                                                                                                                                                                                                                                                    elseif action == "playtest" then
+                                                                                                                                                                                                                                                                        -- arg1: currentTime, arg2: map_name
+                                                                                                                                                                                                                                                                        if menu_music and menu_music:isPlaying() then menu_music:stop() end
+                                                                                                                                                                                                                                                                        game = require("game")
+                                                                                                                                                                                                                                                                        game.load_custom(arg2, settings, arg1)
+                                                                                                                                                                                                                                                                        mode = "gameplay"
                                                                                                                                                                                                                                                                     end
 
                                                                                                                                                                                                                                                                 elseif mode == "gameplay" then
@@ -1107,50 +1093,6 @@ if love.filesystem.getInfo(main_menu_background_path) then
                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
                                                                                                                                                                                                                                                                 end
-                                                                                                                                                                                                                                                                end
-                                                                                                                                                                                                                                                                
-                                                                                                                                                                                                                                                                if mode == "editor" then
-                                                                                                                                                                                                                                                                    editor.update(dt)
-                                                                                                                                                                                                                                                                end
-
-                                                                                                                                                                                                                                                                -- Draw section additions
-                                                                                                                                                                                                                                                                if mode == "custom_select" then
-                                                                                                                                                                                                                                                                    draw_text_with_outline("Select Custom Map:", 50, 50)
-                                                                                                                                                                                                                                                                    if #custom_maps == 0 then
-                                                                                                                                                                                                                                                                        draw_text_with_outline("No maps in Mmaps folder!", 70, 80, {1, 0, 0, 1})
-                                                                                                                                                                                                                                                                    else
-                                                                                                                                                                                                                                                                        for i, map in ipairs(custom_maps) do
-                                                                                                                                                                                                                                                                            local prefix = (i == selected_index) and "> " or "  "
-                                                                                                                                                                                                                                                                            local color = (i == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
-                                                                                                                                                                                                                                                                            draw_text_with_outline(prefix .. map, 70, 80 + i * 30, color)
-                                                                                                                                                                                                                                                                        end
-                                                                                                                                                                                                        love.graphics.setColor(1, 0.5, 0.5, 1)
-                                                                                                                                                                                                        draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
-                                                                                                                                                                                                        love.graphics.setColor(1, 1, 1, 1)
-                                                                                                                                                                                                                                                                    end
-                                                                                                                                                                                                                                                                elseif mode == "editor_select" then
-                                                                                                                                                                                                                                                                    draw_text_with_outline("Editor - Select Map:", 50, 50)
-                                                                                                                                                                                                                                                                    local prefix = (selected_index == 1) and "> " or "  "
-                                                                                                                                                                                                                                                                    local color = (selected_index == 1) and {0, 1, 0, 1} or {1, 1, 1, 1}
-                                                                                                                                                                                                                                                                    draw_text_with_outline(prefix .. "[Create New Map]", 70, 80, color)
-                                                                                                                                                                                                                                                                    
-                                                                                                                                                                                                                                                                    for i, map in ipairs(custom_maps) do
-                                                                                                                                                                                                                                                                        local idx = i + 1
-                                                                                                                                                                                                                                                                        prefix = (idx == selected_index) and "> " or "  "
-                                                                                                                                                                                                                                                                        color = (idx == selected_index) and {1, 1, 0, 1} or {1, 1, 1, 1}
-                                                                                                                                                                                                                                                                        draw_text_with_outline(prefix .. map, 70, 80 + idx * 30, color)
-                                                                                                                                                                                                                                                                    end
-                                                                                                                                                                                                    if selected_index > 1 then
-                                                                                                                                                                                                        love.graphics.setColor(1, 0.5, 0.5, 1)
-                                                                                                                                                                                                        draw_text_with_outline("Press DELETE to remove map", 50, love.graphics.getHeight() - 40)
-                                                                                                                                                                                                        love.graphics.setColor(1, 1, 1, 1)
-                                                                                                                                                                                                    end
-                                                                                                                                                                                                                                                                elseif mode == "editor" then
-                                                                                                                                                                                                                                                                    editor.draw()
-                                                                                                                                                                                                                                                                end
-                                                                                                                                                                                                                                                                if mode == "editor_name_input" then
-                                                                                                                                                                                                                                                                    draw_text_with_outline("Enter New Map Name:", 50, 50)
-                                                                                                                                                                                                                                                                    draw_text_with_outline(new_map_name .. "_", 50, 80, {1, 1, 0, 1})
                                                                                                                                                                                                                                                                 end
 
 function love.textinput(t)
@@ -1259,9 +1201,6 @@ function love.mousepressed(x, y, button)
 end
 
 local function ensure_dir(path)
-    love.filesystem.createDirectory(path) -- Создаем в save directory (гарантировано работает)
-    
-    -- Пытаемся создать в папке проекта (для удобства разработки)
     local cmd
     if love.system.getOS() == "Windows" then
         cmd = 'mkdir "' .. path:gsub("/", "\\") .. '" 2>nul'
@@ -1274,9 +1213,12 @@ end
 local function write_file(path, data)
     -- Пытаемся записать через стандартный IO (в папку проекта)
     local f = io.open(path, "wb")
-    if f then f:write(data) f:close() return true end
-    -- Если не вышло, пишем через LÖVE (в save directory)
-    return love.filesystem.write(path, data)
+    if f then 
+        f:write(data) 
+        f:close() 
+        return true 
+    end
+    return false
 end
 
 function love.filedropped(file)
@@ -1403,4 +1345,48 @@ end
 
 function love.quit()
     save_game_config()
+end
+
+function love.run()
+    if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
+    if love.timer then love.timer.step() end
+    local dt = 0
+
+    return function()
+        local start_time = love.timer.getTime()
+
+        if love.event then
+            love.event.pump()
+            for name, a,b,c,d,e,f in love.event.poll() do
+                if name == "quit" then
+                    if not love.quit or not love.quit() then
+                        return a or 0
+                    end
+                end
+                love.handlers[name](a,b,c,d,e,f)
+            end
+        end
+
+        if love.timer then dt = love.timer.step() end
+        if love.update then love.update(dt) end
+
+        if love.graphics and love.graphics.isActive() then
+            love.graphics.origin()
+            love.graphics.clear(love.graphics.getBackgroundColor())
+            if love.draw then love.draw() end
+            love.graphics.present()
+        end
+
+        if not settings.vsync and settings.max_fps > 0 then
+            local target_dt = 1.0 / settings.max_fps
+            local time_taken = love.timer.getTime() - start_time
+            local time_to_sleep = target_dt - time_taken
+            if time_to_sleep > 0 then
+                if time_to_sleep > 0.002 then love.timer.sleep(time_to_sleep - 0.001) end
+                while love.timer.getTime() < start_time + target_dt do end
+            end
+        elseif not settings.vsync then
+            if love.timer then love.timer.sleep(0.001) end
+        end
+    end
 end

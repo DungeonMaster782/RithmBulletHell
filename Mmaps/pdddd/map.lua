@@ -1,8 +1,8 @@
 return {
   objects = {
-    {x=608, y=416, time=0.000, type="circle", custom_count=0, custom_speed=0},
-    {x=1024, y=384, time=0.000, type="circle", custom_count=0, custom_speed=0},
-    {x=64, y=192, time=0.708, type="circle", custom_count=0, custom_speed=0},
+    {x=608, y=416, time=0.000, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=1024, y=384, time=0.000, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=64, y=192, time=0.708, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
     {x=64, y=192, endX=160, endY=352, time=1.315, type="slider", duration=300},
     {x=160, y=192, endX=64, endY=352, time=1.315, type="slider", duration=300},
     {x=256, y=352, endX=384, endY=192, time=1.315, type="slider", duration=300},
@@ -30,5 +30,14 @@ return {
     {x=1248, y=160, endX=1248, endY=352, time=1.315, type="slider", duration=300},
     {x=480, y=224, time=0.000, type="enemy", duration=10.5, hp=5, shootInterval=0.80, bulletCount=33, bulletSpeed=150},
     {x=768, y=256, time=0.000, type="enemy", duration=5.0, hp=5, shootInterval=0.80, bulletCount=8, bulletSpeed=150},
+    {x=480, y=512, time=0.000, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=288, y=512, time=2.833, type="enemy", duration=5.0, hp=5, shootInterval=0.80, bulletCount=8, bulletSpeed=150},
+    {x=640, y=160, time=2.833, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=352, y=224, time=2.833, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=800, y=256, time=2.833, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=1120, y=192, time=2.833, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=1056, y=416, time=2.833, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=1024, y=480, time=2.833, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
+    {x=640, y=448, time=2.833, type="circle", custom_count=0, custom_speed=0, angle_offset=0, spread_angle=360, volleys=1, volley_interval=0.10, spin=0},
   }
 }

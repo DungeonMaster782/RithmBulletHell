@@ -12,6 +12,18 @@ function lasers.getDistance(px, py, x1, y1, x2, y2)
     return math.sqrt((px - cx)^2 + (py - cy)^2)
 end
 
+-- Оптимизированная проверка коллизии (без sqrt)
+function lasers.checkCollision(px, py, radius, x1, y1, x2, y2)
+    local dx, dy = x2 - x1, y2 - y1
+    if dx == 0 and dy == 0 then
+        return (px - x1)^2 + (py - y1)^2 < radius * radius
+    end
+    local t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+    t = math.max(0, math.min(1, t))
+    local cx, cy = x1 + t * dx, y1 + t * dy
+    return (px - cx)^2 + (py - cy)^2 < radius * radius
+end
+
 function lasers.draw(obj, x1, y1, x2, y2, currentTime, scale)
     if not obj.shown or obj.exploded then return end
     scale = scale or 1

@@ -177,7 +177,7 @@ local function reset_state()
 end
 
 -- ======= CUSTOM GAME LOAD =======
-function game.load_custom(folder_name, settings)
+function game.load_custom(folder_name, settings, startTime)
     print("[GAME] Loading custom map: " .. folder_name)
     
     if music then music:stop() end
@@ -265,8 +265,26 @@ function game.load_custom(folder_name, settings)
     player.load(love.graphics.getWidth(), love.graphics.getHeight())
     mapStartTime = love.timer.getTime()
     
-    -- Пропуск интро (5 секунд до первого объекта)
-    if firstObjectTime ~= math.huge then
+    if startTime then
+        -- Запуск с указанной секунды (из редактора)
+        if music then music:seek(startTime) end
+        mapStartTime = mapStartTime - startTime
+        
+        -- Помечаем прошедшие объекты как взорванные, чтобы они не сработали все сразу
+        local startMs = startTime * 1000
+        for _, obj in ipairs(hitObjects) do
+            local endTime = obj.time
+            if obj.type == "slider" then endTime = obj.time + (obj.duration or 0) end
+            
+            if endTime < startMs then
+                obj.shown = true
+                obj.exploded = true
+                obj.active = false
+                if obj.type == "circle" then obj.volleys_fired = obj.volleys or 999 end
+            end
+        end
+    elseif firstObjectTime ~= math.huge then
+        -- Пропуск интро (5 секунд до первого объекта)
         local skipTime = math.max(0, firstObjectTime - 5000)
         if skipTime > 0 then
             if music then music:seek(skipTime / 1000) end
@@ -480,8 +498,7 @@ function game.update(dt)
                     obj.active = true
                     -- Коллизия с лазером
                     if not player.invuln then
-                        local dist = lasers.getDistance(player.x, player.y, translated_x, translated_y, translated_endX, translated_endY)
-                        if dist < (player.hitboxRadius + 10) then -- 10 - половина ширины лазера
+                        if lasers.checkCollision(player.x, player.y, player.hitboxRadius + 10, translated_x, translated_y, translated_endX, translated_endY) then
                             player.hit()
                         end
                     end
@@ -544,11 +561,11 @@ function game.update(dt)
         for _, b in ipairs(bullets.list) do
             local dx = b.x - player.x
             local dy = b.y - player.y
-            local dist = math.sqrt(dx * dx + dy * dy)
+            local distSq = dx * dx + dy * dy
 
-            if not player.invuln and dist < (player.hitboxRadius + b.radius) then
+            if not player.invuln and distSq < (player.hitboxRadius + b.radius)^2 then
                 player.hit()
-            elseif not b.grazed and dist < (player.grazeRadius + b.radius) then
+            elseif not b.grazed and distSq < (player.grazeRadius + b.radius)^2 then
                 b.grazed = true
                 player.graze()
             end
@@ -678,14 +695,19 @@ function game.draw()
     end
     
     -- Удаляем отработанные объекты
-    for i = #hitObjects, 1, -1 do
-        local obj = hitObjects[i]
-        if obj.exploded and currentTime > obj.time + 100 then
-            -- Удаляем отработанный объект карты, чтобы не обрабатывать его дальше
-            table.remove(hitObjects, i)
+    local write_idx = 1
+    for read_idx = 1, #hitObjects do
+        local obj = hitObjects[read_idx]
+        if not (obj.exploded and currentTime > obj.time + 100) then
+            if read_idx ~= write_idx then
+                hitObjects[write_idx] = obj
+            end
+            write_idx = write_idx + 1
         end
     end
-
+    for i = write_idx, #hitObjects do
+        hitObjects[i] = nil
+    end
 
     -- Жизни
     love.graphics.setColor(1, 1, 1, 1)

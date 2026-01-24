@@ -1,4 +1,6 @@
 local editor = {}
+local bullets = require("bullets")
+local enemies = require("enemies")
 local objects = {}
 local map_name = ""
 local notification = nil
@@ -74,9 +76,6 @@ end
 
 -- Helper for directory creation (local + save dir)
 local function ensure_dir(path)
-    if not love.filesystem.getInfo(path) then
-        love.filesystem.createDirectory(path)
-    end
     local cmd
     if love.system.getOS() == "Windows" then
         cmd = 'if not exist "' .. path:gsub("/", "\\") .. '" mkdir "' .. path:gsub("/", "\\") .. '"'
@@ -98,6 +97,8 @@ function editor.load(folder_name)
     isPlacingLaser = false
     menu.active = false
     menu.advanced = false
+    bullets.load()
+    enemies.load()
     
     local dir = "Mmaps/" .. folder_name
     ensure_dir("Mmaps")
@@ -194,20 +195,77 @@ function editor.notify(msg)
     notification_timer = 3
 end
 
+local function clearGameObjects()
+    bullets.load()
+    enemies.load()
+    for _, obj in ipairs(objects) do
+        obj._volleys_fired = 0
+        obj._fired = false
+    end
+end
+
 function editor.update(dt)
     if notification_timer > 0 then
         notification_timer = notification_timer - dt
     end
     
-    if isPlaying and music then
-        currentTime = music:tell()
-        if currentTime >= duration then
-            isPlaying = false
-            currentTime = 0
-            music:stop()
+    if isPlaying then
+        if music then
+            currentTime = music:tell()
+            if currentTime >= duration then
+                isPlaying = false
+                currentTime = 0
+                music:stop()
+                clearGameObjects()
+            end
+        else
+            currentTime = currentTime + dt * playbackSpeed
         end
-    elseif isPlaying then
-        currentTime = currentTime + dt * playbackSpeed
+        
+        -- Обновление пуль и врагов
+        bullets.update(dt)
+        enemies.update(dt, nil)
+        
+        -- Логика спавна (симуляция игры)
+        for _, obj in ipairs(objects) do
+            if obj.type == "circle" then
+                local volleys = obj.volleys or 1
+                local interval = (obj.volley_interval or 0.1)
+                if not obj._volleys_fired then obj._volleys_fired = 0 end
+                
+                if currentTime >= obj.time then
+                    local time_since_start = currentTime - obj.time
+                    local expected = math.floor(time_since_start / interval) + 1
+                    if expected > volleys then expected = volleys end
+                    
+                    while obj._volleys_fired < expected do
+                        obj._volleys_fired = obj._volleys_fired + 1
+                        local current_spin = (obj.spin or 0) * (obj._volleys_fired - 1)
+                        local current_angle = (obj.angle_offset or 0) + current_spin
+                        
+                        local spawn_params = {
+                            x = obj.x, y = obj.y, preempt = preempt,
+                            custom_count = obj.custom_count,
+                            custom_speed = obj.custom_speed,
+                            angle_offset = current_angle,
+                            spread_angle = obj.spread_angle
+                        }
+                        local cfg = {
+                            bullet_multiplier = settings and settings.bullet_multiplier or 0.5,
+                            bullet_speed = settings and settings.bullet_speed or 1.0,
+                            bullet_size = settings and settings.bullet_size or 1.0,
+                            scale = 1
+                        }
+                        bullets.explode_circle(spawn_params, cfg)
+                    end
+                end
+            elseif obj.type == "enemy" then
+                if not obj._fired and currentTime >= obj.time then
+                    enemies.spawn(obj.x, obj.y, obj)
+                    obj._fired = true
+                end
+            end
+        end
     end
 end
 
@@ -236,6 +294,10 @@ function editor.draw()
     for y = 0, h, gridSize do
         love.graphics.line(0, y, w, y)
     end
+    
+    -- Рисуем пули и врагов (под интерфейсом)
+    enemies.draw(false)
+    bullets.draw()
 
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("EDITOR: " .. map_name, 10, 10)
@@ -614,6 +676,7 @@ function editor.mousepressed(x, y, button)
         if button == 1 and duration > 0 then
             local progress = x / love.graphics.getWidth()
             currentTime = math.max(0, math.min(duration, progress * duration))
+            clearGameObjects()
             if music then music:seek(currentTime) end
         end
         return
@@ -678,6 +741,7 @@ function editor.wheelmoved(x, y)
     end
     
     currentTime = math.max(0, math.min(duration, currentTime + (y * seekAmount)))
+    clearGameObjects()
     if music then music:seek(currentTime) end
 end
 
@@ -685,6 +749,10 @@ function editor.keypressed(key)
     if key == "escape" then
         if music then music:stop() end
         return "exit"
+    elseif key == "f5" then
+        editor.save()
+        if music then music:stop() end
+        return "playtest", currentTime, map_name
     elseif key == "s" then
         editor.save()
     elseif key == "space" then
@@ -694,9 +762,11 @@ function editor.keypressed(key)
         end
     elseif key == "left" then
         currentTime = math.max(0, currentTime - 1)
+        clearGameObjects()
         if music then music:seek(currentTime) end
     elseif key == "right" then
         currentTime = math.min(duration, currentTime + 1)
+        clearGameObjects()
         if music then music:seek(currentTime) end
     elseif key == "-" or key == "kp-" then
         playbackSpeed = math.max(0.25, playbackSpeed - 0.25)
@@ -742,9 +812,6 @@ function editor.save()
     str = str .. "  }\n}"
     
     local path = "Mmaps/" .. map_name .. "/map.lua"
-    love.filesystem.write(path, str)
-    
-    -- Дублируем сохранение в локальную папку игры (через io), чтобы файлы были доступны пользователю
     -- Сначала убедимся, что папка существует локально
     local os_dir = "Mmaps/" .. map_name
     local cmd
@@ -759,6 +826,11 @@ function editor.save()
     if f then
         f:write(str)
         f:close()
+    end
+    
+    -- Удаляем из AppData, если файл там случайно оказался (чистка)
+    if love.filesystem.getInfo(path) then
+        love.filesystem.remove(path)
     end
     
     editor.notify("Saved to " .. path)
@@ -785,13 +857,16 @@ function editor.filedropped(file)
         end
         
         local target = "Mmaps/" .. map_name .. "/audio." .. ext
-        love.filesystem.write(target, data)
         
-        -- Дублируем аудио в локальную папку
         local f = io.open(target, "wb")
         if f then
             f:write(data)
             f:close()
+        end
+        
+        -- Удаляем из AppData, если файл там случайно оказался
+        if love.filesystem.getInfo(target) then
+            love.filesystem.remove(target)
         end
         
         -- Перезагружаем музыку
