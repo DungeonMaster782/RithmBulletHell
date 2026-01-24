@@ -39,6 +39,10 @@ function bullets.load()
     end
 end
 
+function bullets.clear()
+    bullets.list = {}
+end
+
 function bullets.spawn(x, y, speed, angle, radius)
     table.insert(bullets.list, {
         x = x,

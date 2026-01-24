@@ -15,6 +15,10 @@ function enemies.load()
     end
 end
 
+function enemies.clear()
+    list = {}
+end
+
 function enemies.spawn(x, y, props)
     local duration = 5.0
     local hp = 5

@@ -16,6 +16,7 @@ local placementMode = "circle" -- "circle" or "enemy"
 local isPlacingLaser = false
 local laserStartX = 0
 local laserStartY = 0
+local isDraggingTimeline = false
 local preempt = 1.2 -- Время появления объектов (AR)
 
 -- Menu State
@@ -97,6 +98,7 @@ function editor.load(folder_name)
     isPlacingLaser = false
     menu.active = false
     menu.advanced = false
+    isDraggingTimeline = false
     bullets.load()
     enemies.load()
     
@@ -196,8 +198,8 @@ function editor.notify(msg)
 end
 
 local function clearGameObjects()
-    bullets.load()
-    enemies.load()
+    bullets.clear()
+    enemies.clear()
     for _, obj in ipairs(objects) do
         obj._volleys_fired = 0
         obj._fired = false
@@ -209,7 +211,19 @@ function editor.update(dt)
         notification_timer = notification_timer - dt
     end
     
-    if isPlaying then
+    if isDraggingTimeline then
+        if not love.mouse.isDown(1) then
+            isDraggingTimeline = false
+        else
+            local x = love.mouse.getX()
+            local progress = math.max(0, math.min(1, x / love.graphics.getWidth()))
+            currentTime = progress * duration
+            clearGameObjects()
+            if music then music:seek(currentTime) end
+        end
+    end
+    
+    if isPlaying and not isDraggingTimeline then
         if music then
             currentTime = music:tell()
             if currentTime >= duration then
@@ -244,7 +258,7 @@ function editor.update(dt)
                         local current_angle = (obj.angle_offset or 0) + current_spin
                         
                         local spawn_params = {
-                            x = obj.x, y = obj.y, preempt = preempt,
+                            x = obj.x, y = obj.y, preempt = preempt * 1000,
                             custom_count = obj.custom_count,
                             custom_speed = obj.custom_speed,
                             angle_offset = current_angle,
@@ -674,6 +688,7 @@ function editor.mousepressed(x, y, button)
     -- Клик по таймлайну
     if y >= h - barHeight then
         if button == 1 and duration > 0 then
+            isDraggingTimeline = true
             local progress = x / love.graphics.getWidth()
             currentTime = math.max(0, math.min(duration, progress * duration))
             clearGameObjects()
