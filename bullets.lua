@@ -1,19 +1,32 @@
 local bullets = {
     list = {},
-    texture = nil,
+    styles = {},
     glowTexture = nil,
     showHitbox = false,
-    batch = nil,
     glowBatch = nil
 }
 
 function bullets.load()
     bullets.list = {}
-    if love.filesystem.getInfo("res/images/bullet.png") then
-        bullets.texture = love.graphics.newImage("res/images/bullet.png")
-    else
-        bullets.texture = nil
+    bullets.styles = {}
+
+    local function registerStyle(name, path, offset)
+        if love.filesystem.getInfo(path) then
+            local tex = love.graphics.newImage(path)
+            bullets.styles[name] = {
+                texture = tex,
+                batch = love.graphics.newSpriteBatch(tex, 3000, "stream"),
+                offset = offset or 0,
+                w = tex:getWidth(),
+                h = tex:getHeight()
+            }
+        end
     end
+
+    registerStyle("circle", "res/images/bullet.png", 0)
+    registerStyle("arrow_black", "res/images/arrow-black.png", -math.pi/2)
+    registerStyle("arrow_red", "res/images/arrow-red.png", -math.pi/2)
+    registerStyle("arrow_white", "res/images/arrow-white.png", -math.pi/2)
 
     -- Генерация текстуры свечения (мягкий градиент)
     local size = 64
@@ -30,31 +43,34 @@ function bullets.load()
     end
     bullets.glowTexture = love.graphics.newImage(data)
     
-    -- Инициализация SpriteBatch для оптимизации отрисовки
-    if bullets.texture then
-        bullets.batch = love.graphics.newSpriteBatch(bullets.texture, 3000, "stream")
-    end
-    if bullets.glowTexture then
-        bullets.glowBatch = love.graphics.newSpriteBatch(bullets.glowTexture, 3000, "stream")
-    end
+    bullets.glowBatch = love.graphics.newSpriteBatch(bullets.glowTexture, 3000, "stream")
 end
 
 function bullets.clear()
     bullets.list = {}
 end
 
-function bullets.spawn(x, y, speed, angle, radius)
+function bullets.spawn(x, y, speed, angle, radius, style)
+    if not style or not bullets.styles[style] then
+        style = "circle"
+        if not bullets.styles["circle"] then
+            for k in pairs(bullets.styles) do style = k break end
+        end
+    end
+
     table.insert(bullets.list, {
         x = x,
         y = y,
         vx = math.cos(angle) * speed,
         vy = math.sin(angle) * speed,
-        radius = radius or 5
+        radius = radius or 5,
+        angle = angle,
+        style = style
     })
 end
 
 -- Универсальная функция для спауна кольца пуль (для врагов и osu-карт)
-function bullets.spawn_ring(x, y, count, speed, radius, angle_offset, arc)
+function bullets.spawn_ring(x, y, count, speed, radius, angle_offset, arc, style)
     if count <= 0 then return end
     angle_offset = angle_offset or 0
     arc = arc or (math.pi * 2)
@@ -71,7 +87,7 @@ function bullets.spawn_ring(x, y, count, speed, radius, angle_offset, arc)
                 angle = angle_offset + arc / 2
             end
         end
-        bullets.spawn(x, y, speed, angle, radius)
+        bullets.spawn(x, y, speed, angle, radius, style)
     end
 end
 
@@ -95,7 +111,10 @@ function bullets.explode_circle(obj, config)
 
     print("[BULLETS] Boom! Spawning " .. count .. " bullets at (" .. math.floor(obj.x) .. ", " .. math.floor(obj.y) .. ")")
 
-    bullets.spawn_ring(obj.x, obj.y, count, speed, radius, angle_offset, arc)
+    local style = config.style
+    if not style then style = "arrow_red" end
+
+    bullets.spawn_ring(obj.x, obj.y, count, speed, radius, angle_offset, arc, style)
 end
 
 function bullets.update(dt)
@@ -124,30 +143,27 @@ end
 
 function bullets.draw()
     -- Очищаем батчи
-    if bullets.batch then bullets.batch:clear() end
+    for _, s in pairs(bullets.styles) do
+        if s.batch then s.batch:clear() end
+    end
     if bullets.glowBatch then bullets.glowBatch:clear() end
 
     -- Объединяем итерации для производительности
     if #bullets.list > 0 then
-        local glow_ox, glow_oy, bullet_w, bullet_ox, bullet_oy
-        if bullets.glowTexture then
-            glow_ox = bullets.glowTexture:getWidth() / 2
-            glow_oy = bullets.glowTexture:getHeight() / 2
-        end
-        if bullets.texture then
-            bullet_w = bullets.texture:getWidth()
-            bullet_ox = bullet_w / 2
-            bullet_oy = bullets.texture:getHeight() / 2
-        end
+        local glow_ox = bullets.glowTexture:getWidth() / 2
+        local glow_oy = bullets.glowTexture:getHeight() / 2
 
         for _, b in ipairs(bullets.list) do
             if bullets.glowBatch and glow_ox then
                 local scale = (b.radius * 3) / glow_ox
                 bullets.glowBatch:add(b.x, b.y, 0, scale, scale, glow_ox, glow_oy)
             end
-            if bullets.batch and bullet_w then
-                local scale = (b.radius * 2) / bullet_w
-                bullets.batch:add(b.x, b.y, 0, scale, scale, bullet_ox, bullet_oy)
+            local s = bullets.styles[b.style]
+            if s and s.batch then
+                local dim = math.max(s.w, s.h)
+                local scale = (b.radius * 2.5) / dim
+                local r = b.angle + s.offset
+                s.batch:add(b.x, b.y, r, scale, scale, s.w / 2, s.h / 2)
             end
         end
     end
@@ -162,13 +178,8 @@ function bullets.draw()
     -- 2. Основное тело пули
     love.graphics.setBlendMode("alpha")
     love.graphics.setColor(1, 1, 1, 1)
-    if bullets.batch then
-        love.graphics.draw(bullets.batch)
-    else
-        -- Fallback (если текстуры нет)
-        for _, b in ipairs(bullets.list) do
-            love.graphics.circle("fill", b.x, b.y, b.radius)
-        end
+    for _, s in pairs(bullets.styles) do
+        if s.batch then love.graphics.draw(s.batch) end
     end
 
     -- 3. Хитбокс (если включен)

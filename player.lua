@@ -11,6 +11,9 @@ local player = {
     showHitbox = false,
     speed = 200,
     texture = nil,
+    textureLeft = nil,
+    textureRight = nil,
+    currentTexture = nil,
     visualX = 400,
     visualY = 300,
     focusTexture = nil,
@@ -53,6 +56,13 @@ end
 
 function player.load(screenWidth, screenHeight)
     player.texture = love.graphics.newImage("res/images/player.png")
+    player.currentTexture = player.texture
+    if love.filesystem.getInfo("res/images/player-L.png") then
+        player.textureLeft = love.graphics.newImage("res/images/player-L.png")
+    end
+    if love.filesystem.getInfo("res/images/player-R.png") then
+        player.textureRight = love.graphics.newImage("res/images/player-R.png")
+    end
     if love.filesystem.getInfo("res/images/focus.png") then
         player.focusTexture = love.graphics.newImage("res/images/focus.png")
     end
@@ -126,6 +136,14 @@ function player.update(dt)
         if player.dashTimer <= 0 then
             player.isDashing = false
         end
+        -- Обновление текстуры при деше
+        if player.dashVx < 0 and player.textureLeft then
+            player.currentTexture = player.textureLeft
+        elseif player.dashVx > 0 and player.textureRight then
+            player.currentTexture = player.textureRight
+        else
+            player.currentTexture = player.texture
+        end
     else
         -- Обычное движение
         local currentSpeed = player.speed
@@ -133,10 +151,21 @@ function player.update(dt)
             currentSpeed = currentSpeed * 0.5
         end
 
+        local moveLeft = love.keyboard.isDown(player.controls.left)
+        local moveRight = love.keyboard.isDown(player.controls.right)
+
         if love.keyboard.isDown(player.controls.up) then player.y = player.y - currentSpeed * dt end
         if love.keyboard.isDown(player.controls.down) then player.y = player.y + currentSpeed * dt end
-        if love.keyboard.isDown(player.controls.left) then player.x = player.x - currentSpeed * dt end
-        if love.keyboard.isDown(player.controls.right) then player.x = player.x + currentSpeed * dt end
+        if moveLeft then player.x = player.x - currentSpeed * dt end
+        if moveRight then player.x = player.x + currentSpeed * dt end
+
+        if moveLeft and not moveRight and player.textureLeft then
+            player.currentTexture = player.textureLeft
+        elseif moveRight and not moveLeft and player.textureRight then
+            player.currentTexture = player.textureRight
+        else
+            player.currentTexture = player.texture
+        end
     end
     
     -- Стрельба (зажатие)
@@ -183,14 +212,17 @@ function player.draw()
         return
     end
 
-    if player.texture then
+    local visualScale = player.scale / 1.5
+
+    local tex = player.currentTexture or player.texture
+    if tex then
         love.graphics.setColor(1, 1, 1)
-        local w = player.texture:getWidth()
-        local h = player.texture:getHeight()
-        love.graphics.draw(player.texture, player.visualX, player.visualY, 0, player.scale, player.scale, w / 2, h / 2)
+        local w = tex:getWidth()
+        local h = tex:getHeight()
+        love.graphics.draw(tex, player.visualX, player.visualY, 0, visualScale, visualScale, w / 2, h / 2)
     else
         love.graphics.setColor(1, 1, 1)
-        love.graphics.circle("fill", player.visualX, player.visualY, player.radius)
+        love.graphics.circle("fill", player.visualX, player.visualY, player.radius / 1.0)
     end
 
     -- Рисуем текстуру фокуса (если зажат Shift)
@@ -202,7 +234,7 @@ function player.draw()
         end
         
         -- Умножаем на глобальный масштаб игрока
-        scale = scale * player.scale
+        scale = scale * visualScale
 
         local w = player.focusTexture:getWidth()
         local h = player.focusTexture:getHeight()

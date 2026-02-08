@@ -70,7 +70,7 @@ function enemies.update(dt, player_shots)
             -- Стрельба
             if e.shootTimer > e.shootInterval then
                 e.shootTimer = 0
-                bullets.spawn_ring(e.visualX, e.visualY, e.bulletCount, e.bulletSpeed, 5)
+                bullets.spawn_ring(e.visualX, e.visualY, e.bulletCount, e.bulletSpeed, 5, nil, nil, "circle")
             end
             
             if e.timer >= e.duration then
