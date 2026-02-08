@@ -469,7 +469,9 @@ function game.update(dt)
 
     -- Объекты карты (создание пуль)
     if hitObjects then
-        for _, obj in ipairs(hitObjects) do
+        local write_idx = 1
+        for read_idx = 1, #hitObjects do
+            local obj = hitObjects[read_idx]
             -- Переводим координаты в текущее разрешение
             local translated_x = (obj.x * scaleX) + offsetX
             local translated_y = (obj.y * scaleY) + offsetY
@@ -553,6 +555,17 @@ function game.update(dt)
                     end
                 end
             end
+            
+            -- Очистка отработанных объектов (перенесено из draw)
+            if not (obj.exploded and currentTime > obj.time + 100) then
+                if read_idx ~= write_idx then
+                    hitObjects[write_idx] = obj
+                end
+                write_idx = write_idx + 1
+            end
+        end
+        for i = write_idx, #hitObjects do
+            hitObjects[i] = nil
         end
     end
 
@@ -694,21 +707,6 @@ function game.draw()
         end
     end
     
-    -- Удаляем отработанные объекты
-    local write_idx = 1
-    for read_idx = 1, #hitObjects do
-        local obj = hitObjects[read_idx]
-        if not (obj.exploded and currentTime > obj.time + 100) then
-            if read_idx ~= write_idx then
-                hitObjects[write_idx] = obj
-            end
-            write_idx = write_idx + 1
-        end
-    end
-    for i = write_idx, #hitObjects do
-        hitObjects[i] = nil
-    end
-
     -- Жизни
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("Lives: " .. player.lives, 10, 10)
